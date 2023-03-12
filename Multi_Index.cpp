@@ -10,26 +10,26 @@
 
 using namespace std;
 
-#define keybit 128    //ÌØÕ÷ÖµµÄÎ»Êı
-#define hammdist 8    //ÈÏÎªÍ¼Æ¬ÏàËÆµÄ×î´óººÃ÷¾àÀë
-#define sub_index_num 4   //×ÓË÷ÒıµÄÊıÁ¿
-#define sub_keybit keybit/sub_index_num   //ÌØÕ÷Öµ¶ÎµÄÎ»Êı
-#define sub_hammdist  hammdist/sub_index_num    //ºòÑ¡ÖµµÄ±ê×¼
-#define initialize_size 200000 //¹æ¶¨µÄpart_indexµÄ´óĞ¡
-#define test_size 1000 //¹æ¶¨µÄpart_indexµÄ´óĞ¡
+#define keybit 128    //ç‰¹å¾å€¼çš„ä½æ•°
+#define hammdist 8    //è®¤ä¸ºå›¾ç‰‡ç›¸ä¼¼çš„æœ€å¤§æ±‰æ˜è·ç¦»
+#define sub_index_num 4   //å­ç´¢å¼•çš„æ•°é‡
+#define sub_keybit keybit/sub_index_num   //ç‰¹å¾å€¼æ®µçš„ä½æ•°
+#define sub_hammdist  hammdist/sub_index_num    //å€™é€‰å€¼çš„æ ‡å‡†
+#define initialize_size 200000 //è§„å®šçš„part_indexçš„å¤§å°
+#define test_size 1000 //è§„å®šçš„part_indexçš„å¤§å°
 
 int x = 0;
 
 struct uint128_t
 {
-	uint64_t fullkey[2];//ÍêÕûÌØÕ÷Öµ
+	uint64_t fullkey[2];//å®Œæ•´ç‰¹å¾å€¼
 };
-//ÍêÕûË÷ÒıËùÖ¸ÏòµÄÄÚÈİ
+//å®Œæ•´ç´¢å¼•æ‰€æŒ‡å‘çš„å†…å®¹
 struct information
 {
-	uint64_t fullkey[2];//ÍêÕûÌØÕ÷Öµ
-	uint16_t location=111;//´æ´¢Î»ÖÃ
-	//uint64_t count;//ÆµÂÊ
+	uint64_t fullkey[2];//å®Œæ•´ç‰¹å¾å€¼
+	uint16_t location=111;//å­˜å‚¨ä½ç½®
+	//uint64_t count;//é¢‘ç‡
 };
 /*
 struct cmp
@@ -41,17 +41,17 @@ struct cmp
 };
 */
 
-set<uint32_t> candidate;//ºòÑ¡³Ø
-unordered_map<uint32_t, information> full_index;//ÍêÕûË÷Òı
-unordered_map<uint32_t, uint32_t>sub_index1;//ËÄ¸ö×ÓË÷Òı
+set<uint32_t> candidate;//å€™é€‰æ± 
+unordered_map<uint32_t, information> full_index;//å®Œæ•´ç´¢å¼•
+unordered_map<uint32_t, uint32_t>sub_index1;//å››ä¸ªå­ç´¢å¼•
 unordered_map<uint32_t, uint32_t>sub_index2;
 unordered_map<uint32_t, uint32_t>sub_index3;
 unordered_map<uint32_t, uint32_t>sub_index4;
-vector<uint32_t>C_0_TO_subhammdis;//ÓÃÓÚÓëÌØÕ÷¶Î×öÒì»òÔËËãµÄËùÓĞÊı×ÖµÄÈİÆ÷
+vector<uint32_t>C_0_TO_subhammdis;//ç”¨äºä¸ç‰¹å¾æ®µåšå¼‚æˆ–è¿ç®—çš„æ‰€æœ‰æ•°å­—çš„å®¹å™¨
 set<pair<uint64_t, uint64_t>>test_pool;
 
-//×¼±¸ÓëÌØÕ÷¶Î×öÒì»òÔËËãµÄËùÓĞÊı×Ö£¬È«²¿´æÈëC_0_TO_subhammdisÖĞ£¬ÕâÀïÖ»Ğ´ÁË×î¶àÁ½Î»²»Í¬µÄÇé¿ö¡£
-//·½·¨ºÜ±¿£¬ºóÃæÔÙÏëÏëÓĞÃ»ÓĞÆäËû·½·¨¡£
+//å‡†å¤‡ä¸ç‰¹å¾æ®µåšå¼‚æˆ–è¿ç®—çš„æ‰€æœ‰æ•°å­—ï¼Œå…¨éƒ¨å­˜å…¥C_0_TO_subhammdisä¸­ï¼Œè¿™é‡Œåªå†™äº†æœ€å¤šä¸¤ä½ä¸åŒçš„æƒ…å†µã€‚
+//æ–¹æ³•å¾ˆç¬¨ï¼Œåé¢å†æƒ³æƒ³æœ‰æ²¡æœ‰å…¶ä»–æ–¹æ³•ã€‚
 void prepare()
 {
 	uint32_t tmp1 = 1;
@@ -135,7 +135,7 @@ void initialize()
 
 void find_sim(uint64_t query[])
 {
-	//Í¨¹ıÎ»ÔËËã£¬½ØÈ¡ÌØÕ÷Öµ¶Î
+	//é€šè¿‡ä½è¿ç®—ï¼Œæˆªå–ç‰¹å¾å€¼æ®µ
 	uint64_t tmpquery1 = query[0];
 	uint64_t tmpquery2 = query[1];
 	uint32_t sub1 = tmpquery1 & 0xffffffff;
@@ -145,7 +145,7 @@ void find_sim(uint64_t query[])
 	tmpquery2 = tmpquery2 >> 32;
 	uint32_t sub4 = tmpquery2 & 0xffffffff;
 
-	//ÈİÆ÷µÄµü´úÆ÷
+	//å®¹å™¨çš„è¿­ä»£å™¨
 	std::unordered_map<uint32_t, uint32_t>::const_iterator got1;
 	std::unordered_map<uint32_t, uint32_t>::const_iterator got2;
 	std::unordered_map<uint32_t, uint32_t>::const_iterator got3;
@@ -153,21 +153,21 @@ void find_sim(uint64_t query[])
 	std::set<uint32_t>::iterator it;
 	std::vector<uint32_t>::iterator its;
 
-	//Ñ°ÕÒºòÑ¡ÌØÕ÷¶Î
+	//å¯»æ‰¾å€™é€‰ç‰¹å¾æ®µ
 	uint32_t tmpsub1, tmpsub2, tmpsub3, tmpsub4 = 0;
 	for (its= C_0_TO_subhammdis.begin(); its != C_0_TO_subhammdis.end(); its++)
 	{
-		//×öÒì»òÔËËã£¬ÕÒ³öÖ»ÓĞÏà¹ØÎ»²»Í¬µÄ¿ÉÄÜºòÑ¡Öµ
+		//åšå¼‚æˆ–è¿ç®—ï¼Œæ‰¾å‡ºåªæœ‰ç›¸å…³ä½ä¸åŒçš„å¯èƒ½å€™é€‰å€¼
 		tmpsub1 = sub1 ^ *its;
 		tmpsub2 = sub2 ^ *its;
 		tmpsub3 = sub3 ^ *its;
 		tmpsub4 = sub4 ^ *its;
 
-		//·Ö±ğÔÚ4¸ö×ÓË÷ÒıÖĞ²éÕÒºòÑ¡Öµ
+		//åˆ†åˆ«åœ¨4ä¸ªå­ç´¢å¼•ä¸­æŸ¥æ‰¾å€™é€‰å€¼
 		got1 = sub_index1.find(tmpsub1);
-		if (got1 != sub_index1.end())//¼ì²éÕâ¸ö¿ÉÄÜµÄºòÑ¡ÖµÊÇ·ñ´æÔÚ
+		if (got1 != sub_index1.end())//æ£€æŸ¥è¿™ä¸ªå¯èƒ½çš„å€™é€‰å€¼æ˜¯å¦å­˜åœ¨
 		{
-			it = candidate.find(got1->second);//¼ì²é±êÊ¶·ûÔÚºòÑ¡³ØÖĞÊÇ·ñÒÑ¾­´æÔÚ
+			it = candidate.find(got1->second);//æ£€æŸ¥æ ‡è¯†ç¬¦åœ¨å€™é€‰æ± ä¸­æ˜¯å¦å·²ç»å­˜åœ¨
 			if (it == candidate.end())
 				candidate.insert(got1->second);
 		}
@@ -185,8 +185,8 @@ void find_sim(uint64_t query[])
 			if (it == candidate.end())
 				candidate.insert(got3->second);
 		}
-		got4 = sub_index3.find(tmpsub4);
-		if (got4 != sub_index3.end())
+		got4 = sub_index4.find(tmpsub4);
+		if (got4 != sub_index4.end())
 		{
 			it = candidate.find(got4->second);
 			if (it == candidate.end())
@@ -194,7 +194,7 @@ void find_sim(uint64_t query[])
 		}
 	}
 
-	//¶ÔºòÑ¡ÌØÕ÷¶Î½øĞĞÉ¸Ñ¡
+	//å¯¹å€™é€‰ç‰¹å¾æ®µè¿›è¡Œç­›é€‰
 	uint64_t cmp_hamm[2] = { 0 };
 	int count = 0;
 
@@ -206,7 +206,7 @@ void find_sim(uint64_t query[])
 		{
 			cmp_hamm[0] = query[0] ^ (got_out->second.fullkey[0]);
 			cmp_hamm[1] = query[1] ^ (got_out->second.fullkey[1]);
-			//Òì»òºó£¬Í³¼Æ²»Í¬Î»µÄ¸öÊı
+			//å¼‚æˆ–åï¼Œç»Ÿè®¡ä¸åŒä½çš„ä¸ªæ•°
 			count = 0;
 			while (cmp_hamm[0]) {
 				count += cmp_hamm[0] & 1;
@@ -254,19 +254,19 @@ void test()
 		m++;
 	}
 	clock_t endTime = std::clock();
-	double costTime = double(endTime - startTime) / CLOCKS_PER_SEC; //µ¥Î»Ãë
-	cout <<"ÍêÕûË÷ÒıÌõÄ¿Îª£º"<< initialize_size << endl;
-	cout <<"²éÑ¯ÊıÄ¿Îª£º"<< test_size << endl;
-	std::cout << "³ÌĞòºÄÊ±" << costTime << "Ãë£¡" << endl;//²éÑ¯×ÜºÄÊ±
+	double costTime = double(endTime - startTime) / CLOCKS_PER_SEC; //å•ä½ç§’
+	cout <<"å®Œæ•´ç´¢å¼•æ¡ç›®ä¸ºï¼š"<< initialize_size << endl;
+	cout <<"æŸ¥è¯¢æ•°ç›®ä¸ºï¼š"<< test_size << endl;
+	std::cout << "ç¨‹åºè€—æ—¶" << costTime << "ç§’ï¼" << endl;//æŸ¥è¯¢æ€»è€—æ—¶
 }
 
 int main() 
 {
-	//³õÊ¼»¯Êı¾İ£»
-	//Éú³ÉËæ»ú²éÑ¯£»
+	//åˆå§‹åŒ–æ•°æ®ï¼›
+	//ç”ŸæˆéšæœºæŸ¥è¯¢ï¼›
 	
 	prepare();
 	initialize();
 	test();
-	//ÊäÈë´ı²éÑ¯µÄÌØÕ÷Öµ
+	//è¾“å…¥å¾…æŸ¥è¯¢çš„ç‰¹å¾å€¼
 }
