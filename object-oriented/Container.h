@@ -33,12 +33,24 @@ struct information
 {
 	uint64_t fullkey[2];
 	uint16_t location=111;
+	uint64_t outer_id; 
 	//uint64_t count;
 };
 
 class containers
 {
 public:
+
+	static uint64_t* random_128(); //实现
+
+	static uint32_t* get_sub_index(uint64_t *fingeptinty); //实现
+
+	static uint64_t random_uuid(){
+		//1. random 
+		//2. uuid() 字符串
+		//3. static uint32_t id ;
+	}
+
 	static int keybit;
 	static int hammdist;
 	static int sub_index_num;

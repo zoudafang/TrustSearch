@@ -95,6 +95,7 @@ void containers::initialize()
 
 	while(sub_index1.size()<initialize_size)
 	{
+		//替换成函数调用
 		temp_key[0]=(uint64_t)r_eng();
 		temp_key[0]=temp_key[0]<<32;
 		temp_key[0]=temp_key[0]+(uint64_t)r_eng();
@@ -118,6 +119,10 @@ void containers::initialize()
 		temp_full_key[0]=temp_keyx[0];
 		
 		temp_full_key[1]=temp_keyx[1];
+
+
+
+		
 		if((sub_index1.find(sub1)==sub_index1.end())&&(sub_index2.find(sub2)==sub_index2.end())&&(sub_index3.find(sub3)==sub_index3.end())&&(sub_index4.find(sub4)==sub_index4.end()))
 		{
 			sub_index1.insert(pair<uint32_t,uint32_t>(sub1,out_id));
@@ -125,7 +130,10 @@ void containers::initialize()
 			sub_index3.insert(pair<uint32_t,uint32_t>(sub3,out_id));
 			sub_index4.insert(pair<uint32_t,uint32_t>(sub4,out_id));
 			full_index.insert(pair<uint32_t,information>(out_id,temp_information));
-			test_pool.insert(pair<uint64_t,uint64_t>(temp_keyx[0],temp_keyx[1]));
+		
+		//测试数据生成写到test()函数里面或者用一个新的函数
+
+		//	test_pool.insert(pair<uint64_t,uint64_t>(temp_keyx[0],temp_keyx[1]));
 			out_id++;
 		}
 	}
