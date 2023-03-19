@@ -10,7 +10,7 @@ int main()
 {
 	containers example;
 	example.prepare();
-	example.initialize();
+	example.initialize();	
 	example.test();
 	printf("Successfully found similar photos! successful_num=%d\n",example.successful_num);
 	return 0;
