@@ -62,6 +62,8 @@ void ecall_libcxx_functions(void);
 
 
 void call_helloworld_from_enclave(void);
+//change!!
+void run_code_from_enclave(void);
 
 #if defined(__cplusplus)
 }

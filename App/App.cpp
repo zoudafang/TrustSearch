@@ -41,6 +41,8 @@
 #include "App.h"
 #include "Enclave_u.h"
 
+
+
 /* Global EID shared by multiple threads */
 sgx_enclave_id_t global_eid = 0;
 
@@ -204,6 +206,11 @@ int SGX_CDECL main(int argc, char *argv[])
     
  
     call_helloworld_from_enclave();
+
+
+    //change!!!
+    run_code_from_enclave();
+    
 
     /* Destroy the enclave */
     sgx_destroy_enclave(global_eid);
