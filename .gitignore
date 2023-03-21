@@ -7,3 +7,4 @@ App/*_u.c
 App/*_u.h
 Enclave/*_t.c
 Enclave/*_t.h
+*.out
