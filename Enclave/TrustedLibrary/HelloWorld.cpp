@@ -5,3 +5,5 @@
 void ecall_helloworld(){
     printf("this is a message from Enclave");
 }
+
+
