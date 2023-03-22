@@ -7,27 +7,28 @@
 #include "../Enclave.h"
 
 using namespace std;
-#define DEBUG
-#ifdef WIN32
-#define FN (__builtin_strrchr(__FILE__, '\\') ? __builtin_strrchr(__FILE__, '\\') + 1 : __FILE__)
-#else
-#define FN (__builtin_strrchr(__FILE__, '/') ? __builtin_strrchr(__FILE__, '/') + 1 : __FILE__)
-#endif
-#define LOGGER(...) log(FN, __FUNCTION__, __LINE__, __VA_ARGS__)
-#define ERROR(...) error_msg(FN, __FUNCTION__, __LINE__, __VA_ARGS__)
+#define LOGGER(x)
+// #define DEBUG
+// #ifdef WIN32
+// #define FN (__builtin_strrchr(__FILE__, '\\') ? __builtin_strrchr(__FILE__, '\\') + 1 : __FILE__)
+// #else
+// #define FN (__builtin_strrchr(__FILE__, '/') ? __builtin_strrchr(__FILE__, '/') + 1 : __FILE__)
+// #endif
+// #define LOGGER(...) log(FN, __FUNCTION__, __LINE__, __VA_ARGS__)
+// #define ERROR(...) error_msg(FN, __FUNCTION__, __LINE__, __VA_ARGS__)
 
-// #define INFO(...) fprintf(stdout, __VA_ARGS__)
+// // #define INFO(...) fprintf(stdout, __VA_ARGS__)
 
-void log(const char *file_name, const char *function_name, size_t line, const char *fmt, ...);
-void error_msg(const char *file_name, const char *function_name, size_t line, const char *fmt, ...);
+// void log(const char *file_name, const char *function_name, size_t line, const char *fmt, ...);
+// void error_msg(const char *file_name, const char *function_name, size_t line, const char *fmt, ...);
 
-#ifdef DEBUG
-#define Assert(Expr, ...) M_Assert(#Expr, Expr, __FILE__, __LINE__, __VA_ARGS__)
-#else
-#define Assert(Expr, Msg) ;
-#endif
+// #ifdef DEBUG
+// #define Assert(Expr, ...) M_Assert(#Expr, Expr, __FILE__, __LINE__, __VA_ARGS__)
+// #else
+// #define Assert(Expr, Msg) ;
+// #endif
 
-void M_Assert(const char *expr_str, bool expr, const char *file, int line, const char *fmt, ...);
+// void M_Assert(const char *expr_str, bool expr, const char *file, int line, const char *fmt, ...);
 
 
 

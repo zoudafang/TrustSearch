@@ -12,6 +12,8 @@
 #include "Enclave_t.h"
 #include "../Enclave.h"
 #include "sgx_trts.h"
+#include "stdio.h"
+#include <cstdio>
 
 int containers::keybit=128;
 int containers::hammdist=8;
@@ -19,36 +21,36 @@ int containers::sub_index_num=4;
 int containers::test_size=1;
 int containers::initialize_size=4000;
 
-void log(const char *file_name, const char *function_name, size_t line, const char *fmt, ...) {
-#ifdef DEBUG
-    va_list args;
-    va_start(args, fmt);
-    fprintf(stdout, KGRN "[%s:%zu @ %s]: %s", file_name, line, function_name, KWHT);
-    vfprintf(stdout, fmt, args);
-    fprintf(stdout, "\n");
-    fflush(stdout);
-#endif
-}
+// void log(const char *file_name, const char *function_name, size_t line, const char *fmt, ...) {
+// #ifdef DEBUG
+//     va_list args;
+//     va_start(args, fmt);
+//     fprintf(stdout, KGRN "[%s:%zu @ %s]: %s", file_name, line, function_name, KWHT);
+//     vfprintf(stdout, fmt, args);
+//     fprintf(stdout, "\n");
+//     fflush(stdout);
+// #endif
+// }
 
-void error_msg(const char *file_name, const char *function_name, size_t line, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    fprintf(stdout, KRED "[ERROR] [%s:%zu @ %s]: %s", file_name, line, function_name, KWHT);
-    vfprintf(stdout, fmt, args);
-    fprintf(stdout, "\n");
-    fflush(stdout);
-}
-void M_Assert(const char *expr_str, bool expr, const char *file, int line, const char *msg, ...) {
-    if (!expr) {
-        fprintf(stderr, KRED "Assert failed:\t");
-        va_list args;
-        va_start(args, msg);
-        vfprintf(stderr, msg, args);
-        fprintf(stderr, "\nExpected: %s\n", expr_str);
-        fprintf(stderr, "At Source: %s:%d\n", file, line);
-        abort();
-    }
-}
+// void error_msg(const char *file_name, const char *function_name, size_t line, const char *fmt, ...) {
+//     va_list args;
+//     va_start(args, fmt);
+//     fprintf(stdout, KRED "[ERROR] [%s:%zu @ %s]: %s", file_name, line, function_name, KWHT);
+//     vfprintf(stdout, fmt, args);
+//     fprintf(stdout, "\n");
+//     fflush(stdout);
+// }
+// void M_Assert(const char *expr_str, bool expr, const char *file, int line, const char *msg, ...) {
+//     if (!expr) {
+//         fprintf(stderr, KRED "Assert failed:\t");
+//         va_list args;
+//         va_start(args, msg);
+//         vfprintf(stderr, msg, args);
+//         fprintf(stderr, "\nExpected: %s\n", expr_str);
+//         fprintf(stderr, "At Source: %s:%d\n", file, line);
+//         abort();
+//     }
+// }
 
 
 containers::containers()
@@ -76,6 +78,7 @@ void containers::prepare()
 				C_0_TO_subhammdis.push_back(tmp);
 			}
 		}
+		break;
 	case 1:
 	{
 		for(int x=0;x<32;x++)
@@ -100,7 +103,7 @@ void containers::initialize()
 	unsigned char rand[16]={0};
 
 	while(sub_index1.size()<initialize_size)
-	{
+	{	
 		sgx_read_rand(rand,16);
 		temp_key[0]=(uint64_t)rand[0];
 		for(int i=1;i<8;i++)
@@ -139,6 +142,7 @@ void containers::initialize()
 			out_id++;
 		}
 	}
+	printf("Return!!");
 	return;
 }
 void containers::find_sim(uint64_t query[])
@@ -256,9 +260,13 @@ void containers::test()
 }
 void run_code()
 {
+	printf("run code!\n");
 	containers example;
+	printf("Prepare\n");
     example.prepare();
+	printf("Init\n");
 	example.initialize();	
+	printf("Test\n");
 	example.test();
 	printf("Successfully found similar photos! successful_num=%d\n",example.successful_num);
 }
