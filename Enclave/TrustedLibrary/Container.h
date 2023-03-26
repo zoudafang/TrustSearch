@@ -7,6 +7,7 @@
 #include "../Enclave.h"
 
 using namespace std;
+
 #define LOGGER(x)
 // #define DEBUG
 // #ifdef WIN32
@@ -59,6 +60,10 @@ public:
 	vector<uint32_t>C_0_TO_subhammdis; //用于与特征段做异或运算的所有数字的容器
 	set<pair<uint64_t,uint64_t>>test_pool;
 	containers();
+	void random_128(uint64_t *temp_key);
+	void get_sub_fingerprint(uint32_t *sub_fingerprint,uint64_t *fingerprint);
+	uint64_t random_uuid();
+	void get_test_pool(uint64_t *temp_key);
 	void prepare();
 	void initialize();
 	void find_sim(uint64_t query[]);
