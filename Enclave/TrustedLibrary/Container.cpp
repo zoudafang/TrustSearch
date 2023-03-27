@@ -15,11 +15,11 @@
 #include "stdio.h"
 #include <cstdio>
 
-int containers::keybit=128;
-int containers::hammdist=8;
-int containers::sub_index_num=4;
-int containers::test_size=1;
-int containers::initialize_size=11000;
+uint64_t containers::keybit=128;
+uint64_t containers::hammdist=8;
+uint64_t containers::sub_index_num=4;
+uint32_t containers::test_size=1000;
+uint32_t containers::initialize_size=200000;
 
 // void log(const char *file_name, const char *function_name, size_t line, const char *fmt, ...) {
 // #ifdef DEBUG
@@ -85,18 +85,11 @@ void containers::get_sub_fingerprint(uint32_t *sub_fingerprint,uint64_t *fingerp
 	fingerprint[1]=fingerprint[1]>>32;
 	sub_fingerprint[3]=fingerprint[1]&0xffffffff;
 }
-uint64_t containers::random_uuid()
+uint32_t containers::random_uuid()
 {
-	uint64_t out_id;
-	unsigned char rand[8]={0};
-	sgx_read_rand(rand,8);
-	out_id=(uint64_t)rand[0];
-	for(int i=1;i<8;i++)
-	{
-		out_id=out_id<<8;
-		out_id=out_id+(uint64_t)rand[i];
-	}
-	return out_id;
+	static uint32_t id = 0U;
+	id++;
+	return id;
 }
 void containers::prepare()
 {
@@ -135,7 +128,6 @@ void containers::prepare()
 void containers::initialize()
 {
 	uint64_t temp_key[2]={0};
-	uint64_t temp_keyx[2]={0};
 	uint32_t out_id=0;
 	uint32_t sub[4]={0};
 	information temp_information;
@@ -144,40 +136,52 @@ void containers::initialize()
 	while(sub_index1.size()<initialize_size)
 	{	
 		random_128(temp_key);
-		temp_keyx[0]=temp_key[0];
-		temp_keyx[1]=temp_key[1];
 		temp_information.fullkey[0]=temp_key[0];
 		temp_information.fullkey[1]=temp_key[1];
 		get_sub_fingerprint(sub,temp_key);
 		out_id=random_uuid();
 
-		if((sub_index1.find(sub[0])==sub_index1.end())&&(sub_index2.find(sub[1])==sub_index2.end())&&(sub_index3.find(sub[2])==sub_index3.end())&&(sub_index4.find(sub[3])==sub_index4.end()))
-		{
-			sub_index1.insert(pair<uint32_t,uint32_t>(sub[0],out_id));
-			sub_index2.insert(pair<uint32_t,uint32_t>(sub[1],out_id));
-			sub_index3.insert(pair<uint32_t,uint32_t>(sub[2],out_id));
-			sub_index4.insert(pair<uint32_t,uint32_t>(sub[3],out_id));
-			full_index.insert(pair<uint32_t,information>(out_id,temp_information));
-			get_test_pool(temp_keyx);
-		}
+		sub_index1[sub[0]].insert(out_id);
+		sub_index2[sub[1]].insert(out_id);
+		sub_index3[sub[2]].insert(out_id);;
+		sub_index4[sub[3]].insert(out_id);;
+		full_index[out_id]=temp_information;
 	}
 	printf("Return!!\n");
 	return;
 }
-void containers::get_test_pool(uint64_t *temp_key)
+void containers::get_test_pool()
 {
-	int h=0,y=0;
-	uint64_t t=0x0000000000000001;
-	unsigned char rand[2]={0};
-	sgx_read_rand(rand,2);
-	h=rand[0]%3;
-	for(int i=0;i<h;i++)
+	uint64_t temp_key[2]={0};
+	// for(auto it : full_index;it<test_size;it++)
+	// {
+	for(auto it : full_index)
 	{
-	  	y=rand[1]%64;
-		temp_key[0]=temp_key[0]^(t<<y);
-		temp_key[1]=temp_key[1]^(t<<y);
+		if(test_pool.size()>=test_size)
+		{
+			return;
+		}
+		temp_key[0]=it.second.fullkey[0];
+		temp_key[1]=it.second.fullkey[1];
+		int h=0,y=0;
+		uint64_t t=0x0000000000000001;
+		unsigned char rand[2]={0};
+		sgx_read_rand(rand,2);
+		h=rand[0]%3;
+		for(int i=0;i<h;i++)
+		{
+	  		y=rand[1]%64;
+			temp_key[0]=temp_key[0]^(t<<y);
+			temp_key[1]=temp_key[1]^(t<<y);
+		}
+		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
 	}
-	test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
+
+		// if(test_pool.size()<test_size)
+		// {
+			
+		// }
+	
 }
 void containers::find_sim(uint64_t query[])
 {
@@ -200,30 +204,40 @@ void containers::find_sim(uint64_t query[])
 		auto got1=sub_index1.find(tmpsub1);
 		if(got1!=sub_index1.end())
 		{
-			candidate.insert(got1->second);
+			for(auto &gotx1 : got1->second)
+			{
+				candidate.insert(gotx1);
+			}
 		}
 
 		auto  got2=sub_index2.find(tmpsub2);
 		if(got2!=sub_index2.end())
 		{
-			candidate.insert(got2->second);
+			for(auto &gotx2 : got2->second)
+			{
+				candidate.insert(gotx2);
+			}
 		}
 		auto got3 = sub_index3.find(tmpsub3);
 		if(got3!=sub_index3.end())
 		{
-			candidate.insert(got3->second);
+			for(auto &gotx3 : got3->second)
+			{
+				candidate.insert(gotx3);
+			}
 		}
 		auto got4=sub_index4.find(tmpsub4);
 		if(got4!=sub_index4.end())
 		{
-			candidate.insert(got4->second);
+			for(auto &gotx4 : got4->second)
+			{
+				candidate.insert(gotx4);
+			}
 		}
 	}
 
-
-
 	uint64_t cmp_hamm[2]={0};
-	int count=0;
+	uint64_t count=0;
 	unordered_map<uint32_t,information>::const_iterator got_out;
 	for(auto &it : candidate)
 	{
@@ -235,12 +249,12 @@ void containers::find_sim(uint64_t query[])
 			count=0;
 			while(cmp_hamm[0])
 			{
-				count+=cmp_hamm[0]&1;
+				count+=cmp_hamm[0]&1ul;
 				cmp_hamm[0]=cmp_hamm[0]>>1;
 			}
 			while(cmp_hamm[1])
 			{
-				count+=cmp_hamm[1]&1;
+				count+=cmp_hamm[1]&1ul;
 				cmp_hamm[1]=cmp_hamm[1]>>1;
 			}
 			if(count<=hammdist)
@@ -251,9 +265,6 @@ void containers::find_sim(uint64_t query[])
 }
 void containers::test()
 {
-	// uint64_t start_time, end_time;
-	// sgx_read_tsc(&start_time);
-
 	uint64_t temp_key[2]={0};
 	for(auto &itx : test_pool)
 	{
@@ -261,23 +272,22 @@ void containers::test()
 		temp_key[1]=itx.second;
 		find_sim(temp_key);
 	}
-
-	// sgx_read_tsc(&end_time);
-	// uint64_t elapsed = end_time - start_time;
 	printf("The full index entry is: %d \n",initialize_size);
 	printf("The number of queries is: %d \n",test_size);
-	// printf("The program takes %lu seconds!\n",elapsed);
-	
 }
-void run_code()
+namespace{
+	containers cont;
+}
+void init()
 {
 	printf("run code!\n");
-	containers example;
-	printf("Prepare\n");
-    example.prepare();
+	cont.prepare();
 	printf("Init\n");
-	example.initialize();	
-	printf("Test\n");
-	example.test();
-	printf("Successfully found similar photos! successful_num=%d\n",example.successful_num);
+	cont.initialize();
+	cont.get_test_pool();
+}
+void test_run()
+{
+	cont.test();
+	printf("Successfully found similar photos! successful_num=%d\n",cont.successful_num);
 }

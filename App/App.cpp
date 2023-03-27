@@ -40,6 +40,7 @@
 #include "sgx_urts.h"
 #include "App.h"
 #include "Enclave_u.h"
+#include<ctime>
 
 
 
@@ -201,15 +202,15 @@ int SGX_CDECL main(int argc, char *argv[])
         getchar();
         return -1; 
     }
- 
-    
- 
-    //call_helloworld_from_enclave();
-
 
     //change!!!
-    run_code_from_enclave();
-    
+    init_from_enclave();
+
+    clock_t startTime=clock();
+    test_from_enclave();
+    clock_t endTime=clock();
+	double costTime=double(endTime-startTime)/CLOCKS_PER_SEC;
+    printf("The test took %lf seconds",costTime);
 
     /* Destroy the enclave */
     sgx_destroy_enclave(global_eid);

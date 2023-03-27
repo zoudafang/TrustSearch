@@ -1,11 +1,10 @@
 #include "../App.h"
 #include "Enclave_u.h"
 
-void call_helloworld_from_enclave(void){
-    ecall_helloworld(global_eid);
-}
-
 //change!!
-void run_code_from_enclave(void){
-    run_code(global_eid);
+void init_from_enclave(void){
+    init(global_eid);
+}
+void test_from_enclave(void){
+    test_run(global_eid);
 }

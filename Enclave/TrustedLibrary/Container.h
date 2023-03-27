@@ -2,6 +2,7 @@
 #include<unordered_map>
 #include<vector>
 #include<iostream>
+#include<unordered_set>
 
 #include "Enclave_t.h"
 #include "../Enclave.h"
@@ -43,27 +44,31 @@ struct information
 class containers
 {
 public:
-	static int keybit;
-	static int hammdist;
-	static int sub_index_num;
-	int sub_keybit;
-	int sub_hammdist;
-	static int initialize_size;
-	static int test_size;
+	static uint64_t keybit;
+	static uint64_t hammdist;
+	static uint64_t sub_index_num;
+	uint64_t sub_keybit;
+	uint64_t sub_hammdist;
+	static uint32_t initialize_size;
+	static uint32_t test_size;
 	int successful_num=0;
 	set<uint32_t> candidate;
 	unordered_map<uint32_t,information> full_index;
-	unordered_map<uint32_t,uint32_t>sub_index1;
-	unordered_map<uint32_t,uint32_t>sub_index2;
-	unordered_map<uint32_t,uint32_t>sub_index3;
-	unordered_map<uint32_t,uint32_t>sub_index4;
+	unordered_map<uint32_t,unordered_set<uint32_t>>sub_index1;
+	unordered_map<uint32_t,unordered_set<uint32_t>>sub_index2;
+	unordered_map<uint32_t,unordered_set<uint32_t>>sub_index3;
+	unordered_map<uint32_t,unordered_set<uint32_t>>sub_index4;
+	// unordered_map<uint32_t,uint32_t>sub_index1;
+	// unordered_map<uint32_t,uint32_t>sub_index2;
+	// unordered_map<uint32_t,uint32_t>sub_index3;
+	// unordered_map<uint32_t,uint32_t>sub_index4;
 	vector<uint32_t>C_0_TO_subhammdis; //用于与特征段做异或运算的所有数字的容器
 	set<pair<uint64_t,uint64_t>>test_pool;
 	containers();
 	void random_128(uint64_t *temp_key);
 	void get_sub_fingerprint(uint32_t *sub_fingerprint,uint64_t *fingerprint);
-	uint64_t random_uuid();
-	void get_test_pool(uint64_t *temp_key);
+	uint32_t random_uuid();
+	void get_test_pool();
 	void prepare();
 	void initialize();
 	void find_sim(uint64_t query[]);
