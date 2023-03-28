@@ -210,15 +210,13 @@ int SGX_CDECL main(int argc, char *argv[])
     test_from_enclave();
     clock_t endTime=clock();
 	double costTime=double(endTime-startTime)/CLOCKS_PER_SEC;
-    printf("The test took %lf seconds",costTime);
+    printf("The test took %lf seconds.\n",costTime);
 
     /* Destroy the enclave */
     sgx_destroy_enclave(global_eid);
     
     printf("Info: Cxx14DemoEnclave successfully returned.\n");
 
-    //printf("Enter a character before exit ...\n");
-    //getchar();
     return 0;
 }
 

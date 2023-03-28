@@ -147,14 +147,11 @@ void containers::initialize()
 		sub_index4[sub[3]].insert(out_id);;
 		full_index[out_id]=temp_information;
 	}
-	printf("Return!!\n");
 	return;
 }
 void containers::get_test_pool()
 {
 	uint64_t temp_key[2]={0};
-	// for(auto it : full_index;it<test_size;it++)
-	// {
 	for(auto it : full_index)
 	{
 		if(test_pool.size()>=test_size)
@@ -176,12 +173,6 @@ void containers::get_test_pool()
 		}
 		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
 	}
-
-		// if(test_pool.size()<test_size)
-		// {
-			
-		// }
-	
 }
 void containers::find_sim(uint64_t query[])
 {
@@ -282,12 +273,12 @@ void init()
 {
 	printf("run code!\n");
 	cont.prepare();
-	printf("Init\n");
+	printf("Init!\n");
 	cont.initialize();
 	cont.get_test_pool();
 }
 void test_run()
 {
 	cont.test();
-	printf("Successfully found similar photos! successful_num=%d\n",cont.successful_num);
+	printf("Successfully found similar photos! successful_num=%d\n.",cont.successful_num);
 }
