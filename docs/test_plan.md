@@ -14,6 +14,6 @@ initialize_size x(32+64x2+16+64x4) bit
 这里的思路就是测量代码中test()部分的运行时间，但是目前没有找到能够在sgx中使用的时间函数，导致只能测量整体时间（包括初始化）  
 ### 测试计划  
 分别设置initialize-size，每组测试多次，取执行时间的平均值；  
-根据已有经验，当enclave中内存占用在90MB左右时，会因为换页开销而倒是性能下降，在查看数据时可以找一下转折点  
+根据已有经验，当enclave中内存占用在90MB左右时，会因为换页开销而导致性能下降，在查看数据时可以找一下转折点  
 1.在不同initialize-size下，运行程序能跑的最小HeapMaxSize（Enclave内存占用），图：X : initialize-size大小，Y ： HeapMaxSize大小  
 2.X : initialize-size大小，Y  ： 单个查询耗费时间
