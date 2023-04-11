@@ -1,11 +1,11 @@
 #include<set>
-#include<unordered_map>
 #include<vector>
 #include<iostream>
+#include<unordered_map>
 #include<unordered_set>
-
 #include "Enclave_t.h"
 #include "../Enclave.h"
+#include"tsl/hopscotch_map.h"
 
 using namespace std;
 
@@ -47,7 +47,7 @@ public:
 	static uint64_t keybit;
 	static uint64_t hammdist;
 	static uint64_t sub_index_num;
-	uint64_t sub_keybit;
+	int sub_keybit;
 	uint64_t sub_hammdist;
 	static uint32_t initialize_size;
 	static uint32_t test_size;
@@ -58,10 +58,11 @@ public:
 	unordered_map<uint32_t,unordered_set<uint32_t>>sub_index2;
 	unordered_map<uint32_t,unordered_set<uint32_t>>sub_index3;
 	unordered_map<uint32_t,unordered_set<uint32_t>>sub_index4;
-	// unordered_map<uint32_t,uint32_t>sub_index1;
-	// unordered_map<uint32_t,uint32_t>sub_index2;
-	// unordered_map<uint32_t,uint32_t>sub_index3;
-	// unordered_map<uint32_t,uint32_t>sub_index4;
+	// tsl::hopscotch_map<uint32_t,information> full_index;
+	// tsl::hopscotch_map<uint32_t,unordered_set<uint32_t>>sub_index1;
+	// tsl::hopscotch_map<uint32_t,unordered_set<uint32_t>>sub_index2;
+	// tsl::hopscotch_map<uint32_t,unordered_set<uint32_t>>sub_index3;
+	// tsl::hopscotch_map<uint32_t,unordered_set<uint32_t>>sub_index4;
 	vector<uint32_t>C_0_TO_subhammdis; //用于与特征段做异或运算的所有数字的容器
 	set<pair<uint64_t,uint64_t>>test_pool;
 	containers();
@@ -74,3 +75,4 @@ public:
 	void find_sim(uint64_t query[]);
 	void test();
 };
+
