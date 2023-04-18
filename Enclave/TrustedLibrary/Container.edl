@@ -3,6 +3,7 @@ enclave {
     /*sgx内部需要的声明文件
     */
     trusted {
-        public void run_code(void);
+        public void init(void);
+        public void test_run(void);
     };
 };

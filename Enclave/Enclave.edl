@@ -40,7 +40,7 @@ enclave {
      *  [*]: implies to import all functions.
      */
       
-    from "TrustedLibrary/HelloWorld.edl" import *;
+    from "TrustedLibrary/Container.edl" import *;
     from "sgx_tstdc.edl" import *;
 
     /* 
