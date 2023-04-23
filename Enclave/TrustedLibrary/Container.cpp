@@ -79,13 +79,17 @@ void containers::random_128(uint64_t *temp_key)
 }
 void containers::get_sub_fingerprint(uint32_t *sub_fingerprint,uint64_t *fingerprint)
 {
-	sub_fingerprint[0]=fingerprint[0]&0xffffffff;
-	fingerprint[0]=fingerprint[0]>>32;
-	sub_fingerprint[1]=fingerprint[0]&0xffffffff;
+	uint64_t temp_fingerprint[2]={0};
+	temp_fingerprint[0]=fingerprint[0];
+	temp_fingerprint[1]=fingerprint[1];
+	
+	sub_fingerprint[0]=temp_fingerprint[0]&0xffffffff;
+	temp_fingerprint[0]=temp_fingerprint[0]>>32;
+	sub_fingerprint[1]=temp_fingerprint[0]&0xffffffff;
 
-	sub_fingerprint[2]=fingerprint[1]&0xffffffff;
-	fingerprint[1]=fingerprint[1]>>32;
-	sub_fingerprint[3]=fingerprint[1]&0xffffffff;
+	sub_fingerprint[2]=temp_fingerprint[1]&0xffffffff;
+	temp_fingerprint[1]=temp_fingerprint[1]>>32;
+	sub_fingerprint[3]=temp_fingerprint[1]&0xffffffff;
 }
 uint32_t containers::random_uuid()
 {
