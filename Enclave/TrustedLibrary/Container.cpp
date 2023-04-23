@@ -187,8 +187,8 @@ void containers::initialize()
 
 		sub_index1[sub[0]].insert(out_id);
 		sub_index2[sub[1]].insert(out_id);
-		sub_index1[sub[2]].insert(out_id);
-		sub_index2[sub[3]].insert(out_id);
+		sub_index3[sub[2]].insert(out_id);
+		sub_index4[sub[3]].insert(out_id);
 		full_index[out_id]=temp_information;
 	}
 	return;
