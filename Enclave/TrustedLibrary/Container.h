@@ -6,7 +6,7 @@
 #include "Enclave_t.h"
 #include "../Enclave.h"
 #include"tsl/hopscotch_map.h"
-
+#include"tsl/bloom_filter.hpp"
 using namespace std;
 
 #define LOGGER(x)
@@ -39,6 +39,7 @@ struct information
 	uint64_t fullkey[2];
 	uint16_t location=111;
 	//uint64_t count;
+	uint32_t sign[1];
 };
 
 class containers
@@ -53,18 +54,28 @@ public:
 	static uint32_t test_size;
 	int successful_num=0;
 	set<uint32_t> candidate;
-	unordered_map<uint32_t,information> full_index;
-	unordered_map<uint32_t,unordered_set<uint32_t>>sub_index1;
-	unordered_map<uint32_t,unordered_set<uint32_t>>sub_index2;
-	unordered_map<uint32_t,unordered_set<uint32_t>>sub_index3;
-	unordered_map<uint32_t,unordered_set<uint32_t>>sub_index4;
+	//unordered_map<uint32_t,information> full_index;
+	// unordered_map<uint32_t,vector<uint32_t>>sub_index1;
+	// unordered_map<uint32_t,vector<uint32_t>>sub_index2;
+	// unordered_map<uint32_t,vector<uint32_t>>sub_index3;
+	// unordered_map<uint32_t,vector<uint32_t>>sub_index4;
+	//vector<uint32_t>sign;
 	// tsl::hopscotch_map<uint32_t,information> full_index;
-	// tsl::hopscotch_map<uint32_t,unordered_set<uint32_t>>sub_index1;
-	// tsl::hopscotch_map<uint32_t,unordered_set<uint32_t>>sub_index2;
-	// tsl::hopscotch_map<uint32_t,unordered_set<uint32_t>>sub_index3;
-	// tsl::hopscotch_map<uint32_t,unordered_set<uint32_t>>sub_index4;
+	pair<uint32_t,uint32_t>*sub_index1;
+	pair<uint32_t,uint32_t>*sub_index2;
+	pair<uint32_t,uint32_t>*sub_index3;
+	pair<uint32_t,uint32_t>*sub_index4;
+	// tsl::hopscotch_map<uint32_t,vector<uint32_t>*>sub_index1;
+	// tsl::hopscotch_map<uint32_t,vector<uint32_t>*>sub_index2;
+	// tsl::hopscotch_map<uint32_t,vector<uint32_t>*>sub_index3;
+	// tsl::hopscotch_map<uint32_t,vector<uint32_t>*>sub_index4;
+	vector<information> full_index;
 	vector<uint32_t>C_0_TO_subhammdis; //用于与特征段做异或运算的所有数字的容器
-	set<pair<uint64_t,uint64_t>>test_pool;
+	set<pair<uint64_t,uint64_t>>test_pool;	//sub_index1.insert(0,full_index);
+	bloom_filter* filter1;
+	bloom_filter* filter2;
+	bloom_filter* filter3;
+	bloom_filter* filter4;
 	containers();
 	void random_128(uint64_t *temp_key);
 	void get_sub_fingerprint(uint32_t *sub_fingerprint,uint64_t *fingerprint);

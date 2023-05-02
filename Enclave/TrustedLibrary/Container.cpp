@@ -14,13 +14,13 @@
 #include "sgx_trts.h"
 #include "stdio.h"
 #include <cstdio>
-
-
+#include <bitset>
+#include <thread>
 uint64_t containers::keybit=128;
 uint64_t containers::hammdist=8;
 uint64_t containers::sub_index_num=4;
 uint32_t containers::test_size=1000;
-uint32_t containers::initialize_size=150000;
+uint32_t containers::initialize_size=9000000;
 
 // void log(const char *file_name, const char *function_name, size_t line, const char *fmt, ...) {
 // #ifdef DEBUG
@@ -52,8 +52,17 @@ uint32_t containers::initialize_size=150000;
 //         abort();
 //     }
 // }
-
-
+bool customCompare(const std::pair<uint32_t, uint32_t>& p1, const std::pair<uint32_t, uint32_t>& p2) {
+    if (p1.first < p2.first) {
+        return true;
+    } else if (p1.first == p2.first) {
+        return p1.second < p2.second;
+    }
+    return false;
+}
+bool compareFirst(const std::pair<uint32_t, uint32_t>& p, uint32_t x) {
+    return p.first < x;
+}
 containers::containers()
 {
 	sub_keybit=(int)keybit/sub_index_num;
@@ -87,7 +96,7 @@ void containers::get_sub_fingerprint(uint32_t *sub_fingerprint,uint64_t *fingerp
 	fingerprint[1]=fingerprint[1]>>32;
 	sub_fingerprint[3]=fingerprint[1]&0xffffffff;
 }
-uint32_t containers::random_uuid()
+uint32_t containers::random_uuid()	
 {
 	static uint32_t id = 0U;
 	id++;
@@ -172,21 +181,62 @@ void containers::initialize()
 	uint32_t out_id=0;
 	uint32_t sub[4]={0};
 	information temp_information;
-
+	
+	sub_index1=new pair<uint32_t,uint32_t>[initialize_size];
+	sub_index2=new pair<uint32_t,uint32_t>[initialize_size];
+	sub_index3=new pair<uint32_t,uint32_t>[initialize_size];
+	sub_index4=new pair<uint32_t,uint32_t>[initialize_size];
+	bloom_parameters parameters;
+    parameters.projected_element_count = initialize_size; // 预计插入initialize_size个元素
+    parameters.false_positive_probability = 0.1; // 期望的误判率为0.1
+    parameters.compute_optimal_parameters(); // 计算最优参数
+	filter1=new bloom_filter(parameters);
+	filter2=new bloom_filter(parameters);
+	filter3=new bloom_filter(parameters);
+	filter4=new bloom_filter(parameters);
+	int sindex=0;
+	printf("1\n");
+	//vector<uint32_t>* vector=new std::vector<uint32_t>(),*vector1=new std::vector<uint32_t>(),*vector2=new std::vector<uint32_t>(),*vector3=new std::vector<uint32_t>();
 	while(full_index.size()<initialize_size)
 	{	
 		random_128(temp_key);
 		temp_information.fullkey[0]=temp_key[0];
 		temp_information.fullkey[1]=temp_key[1];
 		get_sub_fingerprint(sub,temp_key);
-		out_id=random_uuid();
-
-		sub_index1[sub[0]].insert(out_id);
-		sub_index2[sub[1]].insert(out_id);
-		sub_index1[sub[2]].insert(out_id);
-		sub_index2[sub[3]].insert(out_id);
-		full_index[out_id]=temp_information;
+		//out_id=random_uuid();
+		//sign.push_back(random_uuid());
+		temp_information.sign[0]=random_uuid();
+		// if(sub_index1.insert(std::make_pair(sub[0],vector)).second){vector=new std::vector<uint32_t>();}
+		// sub_index1[sub[0]]->push_back(out_id);
+		// if(sub_index2.insert(std::make_pair(sub[1],vector1)).second)
+		// {vector1=new std::vector<uint32_t>();}
+		// 	sub_index2[sub[1]]->push_back(out_id);
+		// if(sub_index3.insert(std::make_pair(sub[2],vector2)).second)
+		// {vector2=new std::vector<uint32_t>();}
+		// 	sub_index3[sub[2]]->push_back(out_id);
+		// if(sub_index4.insert(std::make_pair(sub[3],vector3)).second)
+		// {vector3=new std::vector<uint32_t>();}
+		// 	sub_index4[sub[3]]->push_back(out_id);
+		sub_index1[sindex]=std::pair<uint32_t,uint32_t>{sub[0],out_id};
+		sub_index2[sindex]=std::pair<uint32_t,uint32_t>{sub[1],out_id};
+		sub_index3[sindex]=std::pair<uint32_t,uint32_t>{sub[2],out_id};
+		sub_index4[sindex]=std::pair<uint32_t,uint32_t>{sub[3],out_id};
+		filter1->insert(sub[0]);
+		filter2->insert(sub[1]);
+		filter3->insert(sub[2]);
+		filter4->insert(sub[3]);
+		// sub_index1[sub[0]].push_back(out_id);
+		// sub_index2[sub[1]].push_back(out_id);
+		// sub_index3[sub[2]].push_back(out_id);
+		// sub_index4[sub[3]].push_back(out_id);
+		full_index.push_back(temp_information);
+		out_id++;++sindex;
 	}
+	std::sort(sub_index1,sub_index1+initialize_size,customCompare);
+	std::sort(sub_index2,sub_index2+initialize_size,customCompare);
+	std::sort(sub_index3,sub_index3+initialize_size,customCompare);
+	std::sort(sub_index4,sub_index4+initialize_size,customCompare);
+	printf("2\n");
 	return;
 }
 void containers::get_test_pool()
@@ -198,8 +248,8 @@ void containers::get_test_pool()
 		{
 			return;
 		}
-		temp_key[0]=it.second.fullkey[0];
-		temp_key[1]=it.second.fullkey[1];
+		temp_key[0]=it.fullkey[0];
+		temp_key[1]=it.fullkey[1];
 		int h=0,y=0;
 		uint64_t t=1;
 		unsigned char rand[3]={0};
@@ -223,71 +273,114 @@ void containers::find_sim(uint64_t query[])
 	get_sub_fingerprint(sub,tmpquery);
 
 	uint32_t tmpsub1,tmpsub2,tmpsub3,tmpsub4=0;
+	vector<uint32_t> temp;
+	tsl::hopscotch_map<uint32_t, std::vector<uint32_t> *>::iterator got;
+	uint32_t** tempSubS=new uint32_t*[4];
+	for(int i=0;i<4;i++)tempSubS[i]=new uint32_t[this->C_0_TO_subhammdis.size()];
+	int tempIndex=0,Subsize=this->C_0_TO_subhammdis.size();
 	for(auto &its: this->C_0_TO_subhammdis)
 	{
-		tmpsub1=sub[0]^its;
-		tmpsub2=sub[1]^its;
-		tmpsub3=sub[2]^its;
-		tmpsub4=sub[3]^its;
+		tempSubS[0][tempIndex]= sub[0]^its;
+		tempSubS[1][tempIndex]= sub[1]^its;
+		tempSubS[2][tempIndex]= sub[2]^its;
+		tempSubS[3][tempIndex]= sub[3]^its;
+		++tempIndex;
+	}
+	for (int i = 0; i < 4; i++) {
+    std::sort(tempSubS[i], tempSubS[i] +Subsize);
+	}
+	for(int i=0;i<Subsize;i++)
+	{
+		 tmpsub1=tempSubS[0][i];
+		// tmpsub2=sub[1]^its;
+		// tmpsub3=sub[2]^its;
+		// tmpsub4=sub[3]^its;
 	//	LOGGER("SUB FP INFO: %u %u %u %u",tmpsub1,tmpsub2,tmpsub3,tmpsub4);
 	//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
-		
-		auto got=sub_index1.find(tmpsub1);
-		if(got!=sub_index1.end())
+		//printf("num%d\n",candidate.size());
+		if(filter1->contains(tmpsub1)){
+		auto it = std::lower_bound(sub_index1, sub_index1+initialize_size, tmpsub1,compareFirst);
+		for(;it->first==tmpsub1&&it<sub_index1+initialize_size;++it)
 		{
-			for(auto &gotx1 : got->second)
-			{
-				candidate.insert(gotx1);
-			}
-		}
-		got=sub_index2.find(tmpsub2);
-		if(got!=sub_index2.end())
-		{
-			for(auto &gotx2 : got->second)
-			{
-				candidate.insert(gotx2);
-			}
-		}
-		got=sub_index3.find(tmpsub3);
-		if(got!=sub_index3.end())
-		{
-			for(auto &gotx3 : got->second)
-			{
-				candidate.insert(gotx3);
-			}
-		}
-		got=sub_index4.find(tmpsub4);
-		if(got!=sub_index4.end())
-		{
-			for(auto &gotx4 : got->second)
-			{
-				candidate.insert(gotx4);
-			}
-		}
+			//printf("1%u\n",it->second);
+			candidate.insert(it->second);
+		}}
+		// tmpsub2=tempSubS[1][i];
+		// if(filter2->contains(tmpsub2)){
+		// auto it = std::lower_bound(sub_index2, sub_index2+initialize_size, tmpsub2,compareFirst);
+		// for(;it->first==tmpsub2&&it<sub_index2+initialize_size;++it)
+		// {//printf("1%u\n",it->second);
+		// 	candidate.insert(it->second);
+		// }}
+		// tmpsub3=tempSubS[2][i];
+		// if(filter3->contains(tmpsub3)){
+		// auto it = std::lower_bound(sub_index3, sub_index3+initialize_size, tmpsub3,compareFirst);
+		// for(;it->first==tmpsub3&&it<sub_index3+initialize_size;++it)
+		// {//printf("1%u\n",it->second);
+		// 	candidate.insert(it->second);
+		// }}
+		// tmpsub4=tempSubS[3][i];
+		// if(filter4->contains(tmpsub4)){
+		// auto it = std::lower_bound(sub_index4, sub_index4+initialize_size, tmpsub4,compareFirst);
+		// for(;it->first==tmpsub4&&it<sub_index4+initialize_size;++it)
+		// {//printf("1%u\n",it->second);
+		// 	candidate.insert(it->second);
+		// }}
 	}
-
+	for(int i=0;i<Subsize;i++)
+	{
+		tmpsub2=tempSubS[1][i];
+		if(filter2->contains(tmpsub2)){
+		auto it = std::lower_bound(sub_index2, sub_index2+initialize_size, tmpsub2,compareFirst);
+		for(;it->first==tmpsub2&&it<sub_index2+initialize_size;++it)
+		{//printf("1%u\n",it->second);
+			candidate.insert(it->second);
+		}}
+	}
+	for(int i=0;i<Subsize;i++)
+	{
+		tmpsub3=tempSubS[2][i];
+		if(filter3->contains(tmpsub3)){
+		auto it = std::lower_bound(sub_index3, sub_index3+initialize_size, tmpsub3,compareFirst);
+		for(;it->first==tmpsub3&&it<sub_index3+initialize_size;++it)
+		{//printf("1%u\n",it->second);
+			candidate.insert(it->second);
+		}}
+	}
+	for(int i=0;i<Subsize;i++)
+	{
+		tmpsub4=tempSubS[3][i];
+		if(filter4->contains(tmpsub4)){
+		auto it = std::lower_bound(sub_index4, sub_index4+initialize_size, tmpsub4,compareFirst);
+		for(;it->first==tmpsub4&&it<sub_index4+initialize_size;++it)
+		{//printf("1%u\n",it->second);
+			candidate.insert(it->second);
+		}}
+	}
 	uint64_t cmp_hamm[2]={0};
 	uint64_t count=0;
-	unordered_map<uint32_t,information>::const_iterator got_out;
+	//unordered_map<uint32_t,information>::const_iterator got_out;
 	//tsl::hopscotch_map<uint32_t,information>::const_iterator got_out;
+	information got_out;//printf("num%d\n",)
 	for(auto &it : candidate)
 	{
-		got_out=full_index.find(it);
-		if(got_out!=full_index.end())
+		got_out=full_index[it];
+		if(1)
 		{
-			cmp_hamm[0]=query[0]^(got_out->second.fullkey[0]);
-			cmp_hamm[1]=query[1]^(got_out->second.fullkey[1]);
-			count=0;
-			while(cmp_hamm[0])
-			{
-				count+=cmp_hamm[0]&1ul;
-				cmp_hamm[0]=cmp_hamm[0]>>1;
-			}
-			while(cmp_hamm[1])
-			{
-				count+=cmp_hamm[1]&1ul;
-				cmp_hamm[1]=cmp_hamm[1]>>1;
-			}
+			cmp_hamm[0]=query[0]^(got_out.fullkey[0]);
+			cmp_hamm[1]=query[1]^(got_out.fullkey[1]);
+			count=bitset<64>(cmp_hamm[0]).count()+bitset<64>(cmp_hamm[1]).count();
+			// count=0;
+			// while(cmp_hamm[0])
+			// {
+			// 	count+=cmp_hamm[0]&1ul;
+			// 	cmp_hamm[0]=cmp_hamm[0]>>1;
+			// }
+			// while(cmp_hamm[1])
+			// {
+			// 	count+=cmp_hamm[1]&1ul;
+			// 	cmp_hamm[1]=cmp_hamm[1]>>1;
+			// }
 			if(count<=hammdist)
 				successful_num++;
 		}
@@ -300,6 +393,7 @@ void containers::test()
 	uint64_t temp_key[2]={0};
 	for(auto &itx : test_pool)
 	{
+		//printf("num%d\n",1);
 		temp_key[0]=itx.first;
 		temp_key[1]=itx.second;
 		find_sim(temp_key);
