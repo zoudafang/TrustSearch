@@ -14,13 +14,13 @@
 #include "sgx_trts.h"
 #include "stdio.h"
 #include <cstdio>
-
+#include <bitset>
 
 uint64_t containers::keybit=128;
 uint64_t containers::hammdist=8;
 uint64_t containers::sub_index_num=4;
 uint32_t containers::test_size=1000;
-uint32_t containers::initialize_size=150000;
+uint32_t containers::initialize_size=450000;
 
 // void log(const char *file_name, const char *function_name, size_t line, const char *fmt, ...) {
 // #ifdef DEBUG
@@ -173,20 +173,35 @@ void containers::initialize()
 	uint32_t sub[4]={0};
 	information temp_information;
 
+	full_index.reserve(initialize_size);
+	sub_information sub_info[4];
+	bloom_parameters parameters;
+    parameters.projected_element_count = initialize_size; // 预计插入initialize_size个元素
+    parameters.false_positive_probability = 0.01; // 期望的误判率为0.1
+    parameters.compute_optimal_parameters(); // 计算最优参数
+	parameters.random_seed=0xA5A5A5A5;
+	for(int i=0;i<4;i++)filters[i]=bloom_filter(parameters);
+	printf("1\n");
 	while(full_index.size()<initialize_size)
 	{	
 		random_128(temp_key);
 		temp_information.fullkey[0]=temp_key[0];
 		temp_information.fullkey[1]=temp_key[1];
 		get_sub_fingerprint(sub,temp_key);
-		out_id=random_uuid();
+		//out_id=random_uuid();
 
-		sub_index1[sub[0]].insert(out_id);
-		sub_index2[sub[1]].insert(out_id);
-		sub_index1[sub[2]].insert(out_id);
-		sub_index2[sub[3]].insert(out_id);
-		full_index[out_id]=temp_information;
+		filters[0].insert(sub[0]);
+		filters[1].insert(sub[1]);
+		filters[2].insert(sub[2]);
+		filters[3].insert(sub[3]);
+		sub_index1[sub[0]].push_back(out_id);
+		sub_index2[sub[1]].push_back(out_id);
+		sub_index3[sub[2]].push_back(out_id);
+		sub_index4[sub[3]].push_back(out_id);
+		full_index.push_back(temp_information);
+		++out_id;
 	}
+	printf("2\n");
 	return;
 }
 void containers::get_test_pool()
@@ -198,8 +213,8 @@ void containers::get_test_pool()
 		{
 			return;
 		}
-		temp_key[0]=it.second.fullkey[0];
-		temp_key[1]=it.second.fullkey[1];
+		temp_key[0]=it.fullkey[0];
+		temp_key[1]=it.fullkey[1];
 		int h=0,y=0;
 		uint64_t t=1;
 		unsigned char rand[3]={0};
@@ -213,6 +228,28 @@ void containers::get_test_pool()
 		}
 		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
 	}
+	// for(int i=0,k=initialize_size/test_size;i<initialize_size;i+=k)
+	// {
+	// 	if(test_pool.size()>=test_size)
+	// 	{
+	// 		return;
+	// 	}
+	// 	auto it=full_index[i];
+	// 	temp_key[0]=it.fullkey[0];
+	// 	temp_key[1]=it.fullkey[1];
+	// 	int h=0,y=0;
+	// 	uint64_t t=1;
+	// 	unsigned char rand[3]={0};
+	// 	sgx_read_rand(rand,2);
+	// 	h=rand[0]%3;
+	// 	for(int i=0;i<h;i++)
+	// 	{
+	//   		y=rand[i+1]%64;
+	// 		temp_key[0]=temp_key[0]^(t<<y);
+	// 		temp_key[1]=temp_key[1]^(t<<y);
+	// 	}
+	// 	test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
+	// }
 }
 void containers::find_sim(uint64_t query[])
 {
@@ -223,7 +260,11 @@ void containers::find_sim(uint64_t query[])
 	get_sub_fingerprint(sub,tmpquery);
 
 	uint32_t tmpsub1,tmpsub2,tmpsub3,tmpsub4=0;
-	for(auto &its: this->C_0_TO_subhammdis)
+	vector<uint32_t> temp;
+	static int loopBegin=0;static int times=0;static int line_times=0;
+	uint64_t infoFullkey[2] ;uint32_t subInfo[4];
+	tsl::hopscotch_map<uint32_t, std::vector<uint32_t>>::iterator got;
+	for(auto& its:this->C_0_TO_subhammdis)
 	{
 		tmpsub1=sub[0]^its;
 		tmpsub2=sub[1]^its;
@@ -231,63 +272,85 @@ void containers::find_sim(uint64_t query[])
 		tmpsub4=sub[3]^its;
 	//	LOGGER("SUB FP INFO: %u %u %u %u",tmpsub1,tmpsub2,tmpsub3,tmpsub4);
 	//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
-		
-		auto got=sub_index1.find(tmpsub1);
-		if(got!=sub_index1.end())
+		//printf("num%d\n",candidate.size());
+		if(filters[0].contains(tmpsub1)){
+		auto it = sub_index1.find(tmpsub1);times++;
+		if(it!=sub_index1.end())
 		{
-			for(auto &gotx1 : got->second)
-			{
-				candidate.insert(gotx1);
+			temp=it->second;
+			for(auto& got:temp){
+			candidate.insert(got);
 			}
-		}
-		got=sub_index2.find(tmpsub2);
-		if(got!=sub_index2.end())
-		{
-			for(auto &gotx2 : got->second)
-			{
-				candidate.insert(gotx2);
-			}
-		}
-		got=sub_index3.find(tmpsub3);
-		if(got!=sub_index3.end())
-		{
-			for(auto &gotx3 : got->second)
-			{
-				candidate.insert(gotx3);
-			}
-		}
-		got=sub_index4.find(tmpsub4);
-		if(got!=sub_index4.end())
-		{
-			for(auto &gotx4 : got->second)
-			{
-				candidate.insert(gotx4);
 			}
 		}
 	}
-
+	for(auto& its:this->C_0_TO_subhammdis)
+	{
+		tmpsub2=sub[1]^its;
+		if(filters[1].contains(tmpsub2)){
+		auto it = sub_index2.find(tmpsub2);
+		if(it!=sub_index2.end())
+		{	
+			temp=it->second;times++;
+			for(auto& got:temp){
+			candidate.insert(got); 
+			}
+		}
+		}
+	}
+	for(auto& its:this->C_0_TO_subhammdis)
+	{
+		tmpsub3=sub[2]^its;
+		if(filters[2].contains(tmpsub3)){
+		auto it = sub_index3.find(tmpsub3);times++;
+		if(it!=sub_index3.end())
+		{	
+			temp=it->second;
+			for(auto& got:temp){
+			candidate.insert(got);
+			}
+		}
+		}
+	}
+	for(auto& its:this->C_0_TO_subhammdis)
+	{
+		tmpsub4=sub[3]^its;
+		if(filters[3].contains(tmpsub4)){
+		auto it = sub_index4.find(tmpsub4);times++;
+		if(it!=sub_index4.end())
+		{	
+			temp=it->second;times++;
+			for(auto& got:temp){
+			candidate.insert(got); 
+			}
+		}
+		}
+	}
 	uint64_t cmp_hamm[2]={0};
 	uint64_t count=0;
-	unordered_map<uint32_t,information>::const_iterator got_out;
+	//printf("times1:%d times2 %d\n",line_times,times);
+
+	information got_out;
 	//tsl::hopscotch_map<uint32_t,information>::const_iterator got_out;
 	for(auto &it : candidate)
 	{
-		got_out=full_index.find(it);
-		if(got_out!=full_index.end())
+		got_out=full_index[it];
+		if(1)
 		{
-			cmp_hamm[0]=query[0]^(got_out->second.fullkey[0]);
-			cmp_hamm[1]=query[1]^(got_out->second.fullkey[1]);
-			count=0;
-			while(cmp_hamm[0])
-			{
-				count+=cmp_hamm[0]&1ul;
-				cmp_hamm[0]=cmp_hamm[0]>>1;
-			}
-			while(cmp_hamm[1])
-			{
-				count+=cmp_hamm[1]&1ul;
-				cmp_hamm[1]=cmp_hamm[1]>>1;
-			}
+			cmp_hamm[0]=query[0]^(got_out.fullkey[0]);
+			cmp_hamm[1]=query[1]^(got_out.fullkey[1]);
+			count=bitset<64>(cmp_hamm[0]).count()+bitset<64>(cmp_hamm[1]).count();
+			// count=0;
+			// while(cmp_hamm[0])
+			// {
+			// 	count+=cmp_hamm[0]&1ul;
+			// 	cmp_hamm[0]=cmp_hamm[0]>>1;
+			// }
+			// while(cmp_hamm[1])
+			// {
+			// 	count+=cmp_hamm[1]&1ul;
+			// 	cmp_hamm[1]=cmp_hamm[1]>>1;
+			// }
 			if(count<=hammdist)
 				successful_num++;
 		}
