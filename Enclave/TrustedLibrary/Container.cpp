@@ -53,6 +53,10 @@ uint32_t containers::initialize_size=450000;
 //     }
 // }
 
+namespace{
+	containers cont;
+	std::vector<std::pair<uint64_t,uint64_t>> sign_data;
+}
 
 containers::containers()
 {
@@ -172,6 +176,7 @@ void containers::initialize()
 	uint32_t out_id=0;
 	uint32_t sub[4]={0};
 	information temp_information;
+	containers::initialize_size=sign_data.size();
 
 	full_index.reserve(initialize_size);
 	sub_information sub_info[4];
@@ -184,9 +189,10 @@ void containers::initialize()
 	printf("1\n");
 	while(full_index.size()<initialize_size)
 	{	
-		random_128(temp_key);
-		temp_information.fullkey[0]=temp_key[0];
-		temp_information.fullkey[1]=temp_key[1];
+		//random_128(temp_key);
+		temp_information.fullkey[0]=sign_data[out_id].first;//temp_key[0];
+		temp_information.fullkey[1]=sign_data[out_id].second;//temp_key[1];
+		temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
 		get_sub_fingerprint(sub,temp_key);
 		//out_id=random_uuid();
 
@@ -201,40 +207,19 @@ void containers::initialize()
 		full_index.push_back(temp_information);
 		++out_id;
 	}
+	printf("size:%d，%d，%d，%d\n",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 	printf("2\n");
 	return;
 }
 void containers::get_test_pool()
 {
 	uint64_t temp_key[2]={0};
-	for(auto it : full_index)
-	{
-		if(test_pool.size()>=test_size)
-		{
-			return;
-		}
-		temp_key[0]=it.fullkey[0];
-		temp_key[1]=it.fullkey[1];
-		int h=0,y=0;
-		uint64_t t=1;
-		unsigned char rand[3]={0};
-		sgx_read_rand(rand,2);
-		h=rand[0]%3;
-		for(int i=0;i<h;i++)
-		{
-	  		y=rand[i+1]%64;
-			temp_key[0]=temp_key[0]^(t<<y);
-			temp_key[1]=temp_key[1]^(t<<y);
-		}
-		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
-	}
-	// for(int i=0,k=initialize_size/test_size;i<initialize_size;i+=k)
+	// for(auto it : full_index)
 	// {
 	// 	if(test_pool.size()>=test_size)
 	// 	{
 	// 		return;
 	// 	}
-	// 	auto it=full_index[i];
 	// 	temp_key[0]=it.fullkey[0];
 	// 	temp_key[1]=it.fullkey[1];
 	// 	int h=0,y=0;
@@ -250,6 +235,28 @@ void containers::get_test_pool()
 	// 	}
 	// 	test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
 	// }
+	for(int i=0,k=initialize_size/test_size/2;i<initialize_size;i+=k)
+	{
+		if(test_pool.size()>=test_size*2)
+		{
+			return;
+		}
+		auto it=full_index[i];
+		temp_key[0]=it.fullkey[0];
+		temp_key[1]=it.fullkey[1];
+		int h=0,y=0;
+		uint64_t t=1;
+		unsigned char rand[3]={0};
+		sgx_read_rand(rand,2);
+		h=rand[0]%3;
+		for(int i=0;i<h;i++)
+		{
+	  		y=rand[i+1]%64;
+			temp_key[0]=temp_key[0]^(t<<y);
+			temp_key[1]=temp_key[1]^(t<<y);
+		}
+		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
+	}
 }
 void containers::find_sim(uint64_t query[])
 {
@@ -369,9 +376,6 @@ void containers::test()
 	}
 	
 }
-namespace{
-	containers cont;
-}
 void init()
 {
 	printf("run code!\n");
@@ -387,4 +391,11 @@ void test_run()
 {
 	cont.test();
 	printf("Successfully found similar photos! successful_num=%d.\n",cont.successful_num);
+}
+
+void encall_send_data(void *dataptr,size_t len)
+{
+	std::pair<uint64_t, uint64_t>* data =  reinterpret_cast<std::pair<uint64_t, uint64_t>*>(dataptr);
+	sign_data.insert(sign_data.end(),data,data+len);
+	//printf("%d",sign_data.size());
 }

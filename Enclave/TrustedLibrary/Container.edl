@@ -5,5 +5,6 @@ enclave {
     trusted {
         public void init(void);
         public void test_run(void);
+        public void encall_send_data([in,count=len,size=128] void* dataptr,size_t len);
     };
 };
