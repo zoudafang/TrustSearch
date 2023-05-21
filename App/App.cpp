@@ -202,7 +202,11 @@ int SGX_CDECL main(int argc, char *argv[])
         getchar();
         return -1; 
     }
-
+    
+    //read data
+    std::vector<std::pair<u_int64_t, u_int64_t>> res;
+    read_data("img_code128.bin",res);
+    send_data(res);
     //change!!!
     init_from_enclave();
 

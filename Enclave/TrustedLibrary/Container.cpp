@@ -11,6 +11,7 @@
 //change!!!
 #include "Enclave_t.h"
 #include "../Enclave.h"
+#include <bitset>
 #include "sgx_trts.h"
 #include "stdio.h"
 #include <cstdio>
@@ -53,6 +54,10 @@ uint32_t containers::initialize_size=10000;
 //     }
 // }
 
+namespace{
+	containers cont;
+	std::vector<std::pair<uint64_t,uint64_t>> sign_data;
+}
 /*
 containers::containers()
 {
@@ -458,14 +463,16 @@ void containers::initialize()
 
 	while(full_index_size<initialize_size)
 	{	
-		random_128(temp_key);
+		//random_128(temp_key);
+		temp_key[0]=sign_data[out_id].first;temp_key[1]=sign_data[out_id].second;
 		
 		get_sub_fingerprint(sub,temp_key);
-		out_id=random_uuid();
+		//out_id=random_uuid();
 
-		temp_full_information.fullkey[0]=temp_key[0];
-		temp_full_information.fullkey[1]=temp_key[1];
+		temp_full_information.fullkey[0]=sign_data[out_id].first;//temp_key[0];
+		temp_full_information.fullkey[1]=sign_data[out_id].second;//temp_key[1];
 		temp_full_information.identifier=out_id;
+		//直接把out_id当作sign_data的下标,作为information的标识符，可能需要修改
 		for(int x=0;x<4;x++)
 		{
 			temp_sub_information[x].identifiers=out_id;
@@ -478,6 +485,7 @@ void containers::initialize()
 		sub_index4.push_front(temp_sub_information[3]);
 		full_index.push_front(temp_full_information);
 		full_index_size++;
+		++out_id;
 	}
 	return;
 }
@@ -564,17 +572,17 @@ void containers::find_sim(uint64_t query[])
 		{
 			cmp_hamm[0]=query[0]^(it.fullkey[0]);
 			cmp_hamm[1]=query[1]^(it.fullkey[1]);
-			count=0;
-			while(cmp_hamm[0])
-			{
-				count+=cmp_hamm[0]&1ul;
-				cmp_hamm[0]=cmp_hamm[0]>>1;
-			}
-			while(cmp_hamm[1])
-			{
-				count+=cmp_hamm[1]&1ul;
-				cmp_hamm[1]=cmp_hamm[1]>>1;
-			}
+			count=bitset<64>(cmp_hamm[0]).count()+bitset<64>(cmp_hamm[1]).count();
+			// while(cmp_hamm[0])
+			// {
+			// 	count+=cmp_hamm[0]&1ul;
+			// 	cmp_hamm[0]=cmp_hamm[0]>>1;
+			// }
+			// while(cmp_hamm[1])
+			// {
+			// 	count+=cmp_hamm[1]&1ul;
+			// 	cmp_hamm[1]=cmp_hamm[1]>>1;
+			// }
 			if(count<=hammdist)
 				successful_num++;
 		}
@@ -593,9 +601,9 @@ void containers::test()
 	}
 	
 }
-namespace{
-	containers cont;
-}
+// namespace{
+// 	containers cont;
+// }
 void init()
 {
 	printf("run code!\n");
@@ -611,4 +619,10 @@ void test_run()
 {
 	cont.test();
 	printf("Successfully found similar photos! successful_num=%d.\n",cont.successful_num);
+}
+void encall_send_data(void *dataptr,size_t len)
+{
+	std::pair<uint64_t, uint64_t>* data =  reinterpret_cast<std::pair<uint64_t, uint64_t>*>(dataptr);
+	sign_data.insert(sign_data.end(),data,data+len);
+	//printf("%d",sign_data.size());
 }
