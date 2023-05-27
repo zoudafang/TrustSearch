@@ -192,6 +192,7 @@ void containers::initialize()
 		//random_128(temp_key);
 		temp_information.fullkey[0]=sign_data[out_id].first;//temp_key[0];
 		temp_information.fullkey[1]=sign_data[out_id].second;//temp_key[1];
+		temp_information.identifier=out_id;
 		temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
 		get_sub_fingerprint(sub,temp_key);
 		//out_id=random_uuid();
@@ -237,7 +238,7 @@ void containers::get_test_pool()
 	// }
 	for(int i=0,k=initialize_size/test_size/2;i<initialize_size;i+=k)
 	{
-		if(test_pool.size()>=test_size*2)
+		if(test_pool.size()>=test_size)
 		{
 			return;
 		}
@@ -258,8 +259,9 @@ void containers::get_test_pool()
 		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
 	}
 }
-void containers::find_sim(uint64_t query[])
+std::set<uint32_t> containers::find_sim(uint64_t query[])
 {
+	candidate.clear();
 	uint64_t tmpquery[2]={0};
 	tmpquery[0]=query[0];
 	tmpquery[1]=query[1];
@@ -362,7 +364,7 @@ void containers::find_sim(uint64_t query[])
 				successful_num++;
 		}
 	}
-	candidate.clear();
+	return candidate;
 }
 void containers::test()
 {
@@ -397,5 +399,19 @@ void encall_send_data(void *dataptr,size_t len)
 {
 	std::pair<uint64_t, uint64_t>* data =  reinterpret_cast<std::pair<uint64_t, uint64_t>*>(dataptr);
 	sign_data.insert(sign_data.end(),data,data+len);
+	//printf("%d",sign_data.size());
+}
+
+void encall_find_one(void *dataptr,uint32_t* res,uint32_t* len)
+{
+	uint64_t* data =  reinterpret_cast<uint64_t*>(dataptr);
+	set<uint32_t> res_set=cont.find_sim(data);
+	for(auto &it:res_set)
+	{
+		*res=it;
+		res++;
+	}
+	*len=res_set.size();
+	printf("Successfully found  photos! successful_num=%d.\n",res_set.size());
 	//printf("%d",sign_data.size());
 }

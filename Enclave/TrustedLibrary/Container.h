@@ -82,7 +82,7 @@ public:
 	void get_test_pool();
 	void prepare();
 	void initialize();
-	void find_sim(uint64_t query[]);
+	std::set<uint32_t> find_sim(uint64_t query[]);
 	void test();
 };
 

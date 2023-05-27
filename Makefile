@@ -81,7 +81,7 @@ else
 	Urts_Library_Name := sgx_urts
 endif
 
-App_Cpp_Files := App/App.cpp $(wildcard App/TrustedLibrary/*.cpp)
+App_Cpp_Files := App/App.cpp $(wildcard App/TrustedLibrary/*.cpp) $(wildcard Comm/*.cpp )
 App_Include_Paths := -IApp -I$(SGX_SDK)/include
 
 App_C_Flags := -fPIC -Wno-attributes $(App_Include_Paths)
@@ -104,6 +104,24 @@ App_Link_Flags := -L$(SGX_LIBRARY_PATH) -l$(Urts_Library_Name) -lpthread
 App_Cpp_Objects := $(App_Cpp_Files:.cpp=.o)
 
 App_Name := app
+
+# OpenSSL
+OpenSSL_Include_Path := /usr/include/openssl
+OpenSSL_Libraries := ssl crypto
+
+# Boost
+Boost_Include_Path := /usr/include/boost
+Boost_Libraries := boost_thread boost_system boost_serialization
+System_Libraries := pthread
+
+# Include Paths
+Include_Paths := $(App_Include_Paths) -I$(OpenSSL_Include_Path) -I$(Boost_Include_Path)
+
+# Linker Paths
+#Linker_Paths := -L$(SGX_LIBRARY_PATH) -L$(OpenSSL_Library_Path) -L$(Boost_Library_Path)
+
+# Linker Flags
+Linker_Flags :=  $(patsubst %,-l%,$(OpenSSL_Libraries)) $(patsubst %,-l%,$(Boost_Libraries)) 
 
 ######## Enclave Settings ########
 
@@ -226,12 +244,16 @@ App/Enclave_u.o: App/Enclave_u.c
 	@$(CC) $(SGX_COMMON_CFLAGS) $(App_C_Flags) -c $< -o $@
 	@echo "CC   <=  $<"
 
+Comm/%.o: Comm/%.cpp 
+	@$(CXX) $(SGX_COMMON_CXXFLAGS) $(App_Cpp_Flags) $(Include_Paths) -c $< -o $@ 
+	@echo "CXX  <=  $<"
+
 App/%.o: App/%.cpp App/Enclave_u.h
-	@$(CXX) $(SGX_COMMON_CXXFLAGS) $(App_Cpp_Flags) -c $< -o $@
+	@$(CXX) $(SGX_COMMON_CXXFLAGS) $(App_Cpp_Flags) $(Include_Paths)  -c $< -o $@
 	@echo "CXX  <=  $<"
 
 $(App_Name): App/Enclave_u.o $(App_Cpp_Objects)
-	@$(CXX) $^ -o $@ $(App_Link_Flags)
+	@$(CXX) $^ -o $@ $(App_Link_Flags) $(Linker_Flags) 
 	@echo "LINK =>  $@"
 
 ######## Enclave Objects ########

@@ -42,8 +42,15 @@
 #include "Enclave_u.h"
 #include<ctime>
 
-
-
+#include <openssl/ssl.h>
+#include <openssl/ecdh.h>
+#include <openssl/ec.h>
+#include <signal.h>
+#include <boost/thread/thread.hpp>
+#include "../include/constVar.h"
+#include "../include/serverOptThead.h"
+#include "../include/sslConnection.h"
+#include <openssl/ssl.h>
 /* Global EID shared by multiple threads */
 sgx_enclave_id_t global_eid = 0;
 
@@ -188,7 +195,7 @@ void ocall_print_string(const char *str)
     printf("%s", str);
 }
 
-
+void start_server();
 /* Application entry */
 int SGX_CDECL main(int argc, char *argv[])
 {
@@ -206,15 +213,20 @@ int SGX_CDECL main(int argc, char *argv[])
 
     std::vector<std::pair<u_int64_t, u_int64_t>> res;
     read_data("img_code128.bin",res);
+    
+    uint64_t* testFull=new uint64_t[2];
+    testFull[0]=res[2].first;testFull[1]=res[2].second;
+    printf("testFull[0]:%lu, testFull[1]:%lu\n",testFull[0],testFull[1]);
     send_data(res);
     //change!!!
     init_from_enclave();
-
+    
     clock_t startTime=clock();
-    test_from_enclave();
+    //test_from_enclave();
     clock_t endTime=clock();
 	double costTime=double(endTime-startTime)/CLOCKS_PER_SEC;
     printf("The test took %lf seconds.\n",costTime);
+    start_server();
 
     /* Destroy the enclave */
     sgx_destroy_enclave(global_eid);
@@ -222,5 +234,36 @@ int SGX_CDECL main(int argc, char *argv[])
     printf("Info: Cxx14DemoEnclave successfully returned.\n");
 
     return 0;
+}
+
+void start_server(){
+    SSLConnection* dataSecurityChannelObj;
+    vector<boost::thread*> thList;
+    ServerOptThread* serverThreadObj;
+    boost::thread* thTmp;
+    boost::thread_attributes attrs;
+    attrs.set_stack_size(THREAD_STACK_SIZE);
+    
+    dataSecurityChannelObj = new SSLConnection(SERVER_IP, 
+        SERVER_PORT, IN_SERVERSIDE);
+
+    // init 
+    serverThreadObj = new ServerOptThread(dataSecurityChannelObj,  1);
+
+    /**
+     * |---------------------------------------|
+     * |Finish the initialization of the server|
+     * |---------------------------------------|
+     */
+
+    while (true) {
+        //tool::Logging(myName.c_str(), "waiting the request from the client.\n");
+        SSL* clientSSL = dataSecurityChannelObj->ListenSSL().second;
+        thTmp = new boost::thread(attrs, boost::bind(&ServerOptThread::Run, serverThreadObj,
+            clientSSL));
+        thList.push_back(thTmp);
+    }
+
+    return ;
 }
 
