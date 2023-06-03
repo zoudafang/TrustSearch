@@ -234,7 +234,7 @@ void containers::get_test_pool()
 			temp_key[0]=temp_key[0]^(t<<y);
 			temp_key[1]=temp_key[1]^(t<<y);
 		}
-		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
+		test_pool.push_back(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
 	}
 	// for(int i=0,k=initialize_size/test_size/2;i<initialize_size;i+=k)
 	// {
@@ -393,7 +393,6 @@ void init()
 {
 	printf("run code!\n");
 	cont.prepare();
-	cont.changeHammingDist(16);
 	printf("c_o size: %d\n",cont.C_0_TO_subhammdis.size());
 	printf("Init!\n");
 	cont.initialize();
@@ -465,6 +464,7 @@ void encall_find_batch(void *dataptr,uint32_t* res,uint32_t len,uint32_t len_res
 	query.dataBuffer=query.sendData+sizeof(uint32_t)*(len+1);
 	uint64_t* data =  reinterpret_cast<uint64_t*>(dataE);
 	uint64_t temp2[2];
+	printf("query len=%d\n",len);
 	for(int i=0;i<len;i++){
 		temp2[0]=data[2*i];temp2[1]=data[2*i+1];
 		set<uint32_t> res_set=cont.find_sim(temp2);
@@ -476,10 +476,10 @@ void encall_find_batch(void *dataptr,uint32_t* res,uint32_t len,uint32_t len_res
 			query.dataBuffer++;
 		}
 	}
+
 	printf("successful_num=%d\n",cont.successful_num);
 	//*len=res_set.size();
 	cryptoObj->SessionKeyEnc(cipherCtx_,(uint8_t*)res_old,QUERY_SIZE*sizeof(uint32_t)*len,sessionKey_,(uint8_t*)res_old);
-	//cryptoObj->SessionKeyEnc();
 	//printf("Successfully found  photos! successful_num=%d.\n",res_set.size());
-	//printf("%d",sign_data.size());
+	printf("%d",sign_data.size());
 }

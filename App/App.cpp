@@ -222,8 +222,9 @@ int SGX_CDECL main(int argc, char *argv[])
     init_from_enclave();
     
     clock_t startTime=clock();
-    //test_from_enclave();
+    test_from_enclave();
     clock_t endTime=clock();
+    
 	double costTime=double(endTime-startTime)/CLOCKS_PER_SEC;
     printf("The test took %lf seconds.\n",costTime);
     start_server();

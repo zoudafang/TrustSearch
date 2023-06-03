@@ -144,12 +144,19 @@ void ServerOptThread::Run(SSL* clientSSL) {
             testFull=new uint64_t[dataLen*2];
             printf("dalen:%d\n",dataLen);
             memcpy(testFull,temp,dataLen*2*sizeof(uint64_t));
-            printf("dadaso%llu\n",testFull[199]);
             Query_batch_t queryBatch;
             queryBatch.sendData=new uint32_t[dataLen*QUERY_SIZE];
             //encall to find the answer of the query
             int res_len=dataLen*QUERY_SIZE;
+            
+            std::chrono::steady_clock::time_point startTime2, endTime2;
+            std::chrono::duration<double> duration2;
+            startTime2 = std::chrono::steady_clock::now(); // 记录开始时间
             sgx_status_t t= encall_find_batch(global_eid,testFull,queryBatch.sendData,dataLen,res_len,hammdist);
+            
+            endTime2 = std::chrono::steady_clock::now();
+            duration2 = endTime2 - startTime2; // 计算持续时间
+            printf("函数运行时间：%f秒\n", duration2.count());
             printf("flag:%d\n",t);
             //send the answer to client
             dataSecureChannel_->SendData(clientSSL, (uint8_t*)queryBatch.sendData, 3000*4);
