@@ -1,0 +1,16 @@
+enclave {
+
+
+    include "sgx_tseal.h"
+    include "sgx_trts.h"
+    include "sgx_key_exchange.h"
+
+    from "sgx_tstdc.edl" import *;
+    from "sgx_tsgxssl.edl" import *;
+    from "sgx_pthread.edl" import *;
+/**/
+    /*sgx内部需要的声明文件
+    */
+    trusted {
+            };
+};

@@ -215,34 +215,12 @@ void containers::initialize()
 void containers::get_test_pool()
 {
 	uint64_t temp_key[2]={0};
-	// for(auto it : full_index)
-	// {
-	// 	if(test_pool.size()>=test_size)
-	// 	{
-	// 		return;
-	// 	}
-	// 	temp_key[0]=it.fullkey[0];
-	// 	temp_key[1]=it.fullkey[1];
-	// 	int h=0,y=0;
-	// 	uint64_t t=1;
-	// 	unsigned char rand[3]={0};
-	// 	sgx_read_rand(rand,2);
-	// 	h=rand[0]%3;
-	// 	for(int i=0;i<h;i++)
-	// 	{
-	//   		y=rand[i+1]%64;
-	// 		temp_key[0]=temp_key[0]^(t<<y);
-	// 		temp_key[1]=temp_key[1]^(t<<y);
-	// 	}
-	// 	test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
-	// }
-	for(int i=0,k=initialize_size/test_size/2;i<initialize_size;i+=k)
+	for(auto it : full_index)
 	{
 		if(test_pool.size()>=test_size)
 		{
 			return;
 		}
-		auto it=full_index[i];
 		temp_key[0]=it.fullkey[0];
 		temp_key[1]=it.fullkey[1];
 		int h=0,y=0;
@@ -258,6 +236,28 @@ void containers::get_test_pool()
 		}
 		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
 	}
+	// for(int i=0,k=initialize_size/test_size/2;i<initialize_size;i+=k)
+	// {
+	// 	if(test_pool.size()>=test_size)
+	// 	{
+	// 		return;
+	// 	}
+	// 	auto it=full_index[i];
+	// 	temp_key[0]=it.fullkey[0];
+	// 	temp_key[1]=it.fullkey[1];
+	// 	int h=0,y=0;
+	// 	uint64_t t=1;
+	// 	unsigned char rand[3]={0};
+	// 	sgx_read_rand(rand,2);
+	// 	h=rand[0]%3;
+	// 	for(int i=0;i<h;i++)
+	// 	{
+	//   		y=rand[i+1]%64;
+	// 		temp_key[0]=temp_key[0]^(t<<y);
+	// 		temp_key[1]=temp_key[1]^(t<<y);
+	// 	}
+	// 	test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
+	// }
 }
 std::set<uint32_t> containers::find_sim(uint64_t query[])
 {
@@ -341,9 +341,9 @@ std::set<uint32_t> containers::find_sim(uint64_t query[])
 
 	information got_out;
 	//tsl::hopscotch_map<uint32_t,information>::const_iterator got_out;
-	for(auto &it : candidate)
+	for(auto it = candidate.begin(); it != candidate.end();)
 	{
-		got_out=full_index[it];
+		got_out=full_index[*it];
 		if(1)
 		{
 			cmp_hamm[0]=query[0]^(got_out.fullkey[0]);
@@ -360,8 +360,11 @@ std::set<uint32_t> containers::find_sim(uint64_t query[])
 			// 	count+=cmp_hamm[1]&1ul;
 			// 	cmp_hamm[1]=cmp_hamm[1]>>1;
 			// }
-			if(count<=hammdist)
+			if(count<=hammdist){
 				successful_num++;
+				it++;}
+			else 
+				it=candidate.erase(it);
 		}
 	}
 	return candidate;
@@ -378,10 +381,19 @@ void containers::test()
 	}
 	
 }
+void containers::changeHammingDist(uint64_t hammdist)
+{
+	if(hammdist==this->hammdist)return;
+	this->hammdist=hammdist;
+	this->sub_hammdist=hammdist/4;
+	this->C_0_TO_subhammdis.clear();
+	this->prepare();
+}
 void init()
 {
 	printf("run code!\n");
 	cont.prepare();
+	cont.changeHammingDist(16);
 	printf("c_o size: %d\n",cont.C_0_TO_subhammdis.size());
 	printf("Init!\n");
 	cont.initialize();
@@ -402,16 +414,72 @@ void encall_send_data(void *dataptr,size_t len)
 	//printf("%d",sign_data.size());
 }
 
-void encall_find_one(void *dataptr,uint32_t* res,uint32_t* len)
+void encall_find_one(void *dataptr,uint32_t* res,uint64_t hammdist)
 {
-	uint64_t* data =  reinterpret_cast<uint64_t*>(dataptr);
+	cont.changeHammingDist(hammdist);
+
+    EcallCrypto* cryptoObj = new EcallCrypto(CIPHER_TYPE, HASH_TYPE);
+    EVP_MD_CTX* mdCtx = EVP_MD_CTX_new(); 
+    EVP_CIPHER_CTX* cipherCtx_ = EVP_CIPHER_CTX_new();
+    uint8_t* sessionKey_=const_sessionKey;
+	
+	uint8_t* dataE =reinterpret_cast<uint8_t*>(dataptr);
+	int dataSize = 16;
+    cryptoObj->SessionKeyDec(cipherCtx_, dataE,
+    dataSize, sessionKey_,
+    dataE);
+	printf("nums%d\n",(uint64_t*)dataE[0]);
+	uint64_t* data =  reinterpret_cast<uint64_t*>(dataE);
 	set<uint32_t> res_set=cont.find_sim(data);
+	uint8_t* res_old=reinterpret_cast<uint8_t*>(res);
 	for(auto &it:res_set)
 	{
 		*res=it;
 		res++;
 	}
-	*len=res_set.size();
+	//*len=res_set.size();
+	cryptoObj->SessionKeyEnc(cipherCtx_,(uint8_t*)res_old,3000*4,sessionKey_,(uint8_t*)res_old);
+	//cryptoObj->SessionKeyEnc();
 	printf("Successfully found  photos! successful_num=%d.\n",res_set.size());
+	//printf("%d",sign_data.size());
+}
+
+void encall_find_batch(void *dataptr,uint32_t* res,uint32_t len,uint32_t len_res,uint64_t hammdist){
+	cont.changeHammingDist(hammdist);
+
+	EcallCrypto* cryptoObj = new EcallCrypto(CIPHER_TYPE, HASH_TYPE);
+    EVP_MD_CTX* mdCtx = EVP_MD_CTX_new(); 
+    EVP_CIPHER_CTX* cipherCtx_ = EVP_CIPHER_CTX_new();
+    uint8_t* sessionKey_=const_sessionKey;
+	uint8_t* dataE =reinterpret_cast<uint8_t*>(dataptr);
+	printf("saonaiso%llu\n",(uint64_t*)dataE[199]);
+	int dataSize = sizeof(uint64_t)*len*2;
+    cryptoObj->SessionKeyDec(cipherCtx_, dataE,
+    dataSize, sessionKey_,
+    dataE);
+	uint8_t* res_old=reinterpret_cast<uint8_t*>(res);
+	Query_batch_t query;
+	query.sendData=res;
+	*(query.sendData)=len;
+	query.index=query.sendData+sizeof(uint32_t);
+	query.dataBuffer=query.sendData+sizeof(uint32_t)*(len+1);
+	uint64_t* data =  reinterpret_cast<uint64_t*>(dataE);
+	uint64_t temp2[2];
+	for(int i=0;i<len;i++){
+		temp2[0]=data[2*i];temp2[1]=data[2*i+1];
+		set<uint32_t> res_set=cont.find_sim(temp2);
+		query.index[i]=res_set.size();
+		//printf("res_set.size()=%d\n",res_set.size());
+		for(auto &it:res_set)
+		{
+			*(query.dataBuffer)=it;
+			query.dataBuffer++;
+		}
+	}
+	printf("successful_num=%d\n",cont.successful_num);
+	//*len=res_set.size();
+	cryptoObj->SessionKeyEnc(cipherCtx_,(uint8_t*)res_old,QUERY_SIZE*sizeof(uint32_t)*len,sessionKey_,(uint8_t*)res_old);
+	//cryptoObj->SessionKeyEnc();
+	//printf("Successfully found  photos! successful_num=%d.\n",res_set.size());
 	//printf("%d",sign_data.size());
 }

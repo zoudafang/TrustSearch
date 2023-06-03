@@ -7,7 +7,7 @@
 #include "../Enclave.h"
 #include "tsl/bloom_filter.hpp"
 #include"tsl/hopscotch_map.h"
-
+#include "../ServerECall/ecallEnc.h"
 using namespace std;
 
 #define LOGGER(x)
@@ -82,6 +82,7 @@ public:
 	void get_test_pool();
 	void prepare();
 	void initialize();
+	void changeHammingDist(uint64_t hammingdist);
 	std::set<uint32_t> find_sim(uint64_t query[]);
 	void test();
 };

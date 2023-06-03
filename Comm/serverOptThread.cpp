@@ -103,30 +103,63 @@ void ServerOptThread::Run(SSL* clientSSL) {
         }
     }
 #endif
-    uint8_t* data=new uint8_t[CHUNK_HASH_SIZE];
-    uint32_t dataSize=0;
 
-    //test reply client's query
-    dataSecureChannel_->ReceiveData(clientSSL, data, dataSize);
-    printf("dataSize:%d\n",dataSize);
-    uint64_t* temp=(uint64_t*)data;
-    uint32_t* resData=new uint32_t[3000];
+    uint8_t* data=new uint8_t[CHUNK_HASH_SIZE];
+    uint32_t* resData=new uint32_t[QUERY_SIZE];
     uint32_t* len=new uint32_t[1];
     uint64_t* testFull=new uint64_t[2];
-    testFull[0]=temp[0];testFull[1]=temp[1];
-    //encall to find the answer of the query
-    encall_find_one(global_eid,testFull,resData,len);
-    printf("len:%d\n",*len);
-    uint32_t *resData2=new uint32_t[*len];
-    for(int i=0;i<*len;i++)
-    {
-        resData2[i]=resData[i];
-    }
-    uint8_t* resData3=(uint8_t*)resData2;
-    //send the answer to client
-    dataSecureChannel_->SendData(clientSSL, resData3, *len*4);
+    uint32_t dataSize=0;
+    SendMsgBuffer_t sendBuf;
+    sendBuf.sendBuffer = (uint8_t*) malloc(sizeof(NetworkHead_t) + QUERY_SIZE*sizeof(uint64_t));
+    sendBuf.dataBuffer=sendBuf.sendBuffer+sizeof(NetworkHead_t);
+    sendBuf.header=(NetworkHead_t*)sendBuf.sendBuffer;  
+
+    while(true){
+    //test reply client's query
+    if(!dataSecureChannel_->ReceiveData(clientSSL, sendBuf.sendBuffer, dataSize))break;
+    sendBuf.header = (NetworkHead_t*) sendBuf.sendBuffer;
+    switch(sendBuf.header->messageType) {
+        case QUERY_ONE:{
+            printf("dataSize:%d,type%d\n",sendBuf.header->dataSize,sendBuf.header->messageType);
+            uint64_t* temp=(uint64_t*)sendBuf.dataBuffer;
+            testFull[0]=temp[0];testFull[1]=temp[1];
+            //encall to find the answer of the query
+            uint64_t hammdist=sendBuf.header->hammdist;
+            sgx_status_t t= encall_find_one(global_eid,testFull,resData,hammdist);
+            printf("len:%d\n",t);
+            uint32_t *resData2=new uint32_t[*len];
+            for(int i=0;i<*len;i++)
+            {
+                resData2[i]=resData[i];
+            }
+            uint8_t* resData3=(uint8_t*)resData2;
+            //send the answer to client
+            dataSecureChannel_->SendData(clientSSL, (uint8_t*)resData, 3000*4);
+            break;}
+        case QUERY_BATCH:{
+            uint64_t* temp=(uint64_t*)sendBuf.dataBuffer;
+            uint64_t hammdist=sendBuf.header->hammdist;
+            printf("dist:%d\n",hammdist);
+            uint32_t dataLen=sendBuf.header->dataSize/sizeof(uint64_t)/2;
+            testFull=new uint64_t[dataLen*2];
+            printf("dalen:%d\n",dataLen);
+            memcpy(testFull,temp,dataLen*2*sizeof(uint64_t));
+            printf("dadaso%llu\n",testFull[199]);
+            Query_batch_t queryBatch;
+            queryBatch.sendData=new uint32_t[dataLen*QUERY_SIZE];
+            //encall to find the answer of the query
+            int res_len=dataLen*QUERY_SIZE;
+            sgx_status_t t= encall_find_batch(global_eid,testFull,queryBatch.sendData,dataLen,res_len,hammdist);
+            printf("flag:%d\n",t);
+            //send the answer to client
+            dataSecureChannel_->SendData(clientSSL, (uint8_t*)queryBatch.sendData, 3000*4);
+            break;}
+        default:
+            break;
+        }
+    }  
     delete []resData;delete[] len;
-    
+
 /*    // generate the session key
     if (!dataSecureChannel_->ReceiveData(clientSSL, recvBuf.sendBuffer, 
         recvSize)) {

@@ -106,14 +106,15 @@ App_Cpp_Objects := $(App_Cpp_Files:.cpp=.o)
 App_Name := app
 
 # OpenSSL
-OpenSSL_Include_Path := /usr/include/openssl
-OpenSSL_Libraries := ssl crypto
+OpenSSL_Include_Path := /opt/intel/sgxssl/include
+OpenSSL_Libraries := /usr/lib/x86_64-linux-gnu/libssl.so /usr/lib/x86_64-linux-gnu/libcrypto.so
 
 # Boost
 Boost_Include_Path := /usr/include/boost
 Boost_Libraries := boost_thread boost_system boost_serialization
 System_Libraries := pthread
 
+Untrust_Libraries := sgx_uae_service sgx_capable sgx_usgxssl
 # Include Paths
 Include_Paths := $(App_Include_Paths) -I$(OpenSSL_Include_Path) -I$(Boost_Include_Path)
 
@@ -121,7 +122,7 @@ Include_Paths := $(App_Include_Paths) -I$(OpenSSL_Include_Path) -I$(Boost_Includ
 #Linker_Paths := -L$(SGX_LIBRARY_PATH) -L$(OpenSSL_Library_Path) -L$(Boost_Library_Path)
 
 # Linker Flags
-Linker_Flags :=  $(patsubst %,-l%,$(OpenSSL_Libraries)) $(patsubst %,-l%,$(Boost_Libraries)) 
+Linker_Flags := /usr/lib/x86_64-linux-gnu/libssl.so /usr/lib/x86_64-linux-gnu/libcrypto.so $(patsubst %,-l%,$(Boost_Libraries))  $(patsubst %,-l%,$(Untrust_Libraries))
 
 ######## Enclave Settings ########
 
@@ -144,12 +145,15 @@ else
 endif
 Crypto_Library_Name := sgx_tcrypto
 
-Enclave_Cpp_Files := Enclave/Enclave.cpp $(wildcard Enclave/TrustedLibrary/*.cpp)
-Enclave_Include_Paths := -IEnclave -I$(SGX_SDK)/include -I$(SGX_SDK)/include/libcxx -I$(SGX_SDK)/include/tlibc 
+Enclave_Cpp_Files := Enclave/Enclave.cpp $(wildcard Enclave/TrustedLibrary/*.cpp) $(wildcard Enclave/ServerECall/*.cpp)
+Enclave_Include_Paths := -IEnclave -I$(SGX_SDK)/include -I/opt/intel/sgxssl/include -I/opt/intel/sgxssl/lib64 -I$(SGX_SDK)/include/libcxx -I$(SGX_SDK)/include/tlibc 
 
 Enclave_C_Flags := -nostdinc -fvisibility=hidden -fpie -fstack-protector -fno-builtin-printf $(Enclave_Include_Paths)
 Enclave_Cpp_Flags := $(Enclave_C_Flags) -nostdinc++
 
+OpenSSL_Libraries_Enclave :=  sgx_tsgxssl  sgx_tsgxssl_crypto 
+# Linker Flags
+Linker_Flags_Enclave :=  $(addprefix -l, $(OpenSSL_Libraries_Enclave))
 # Enable the security flags
 Enclave_Security_Link_Flags := -Wl,-z,relro,-z,now,-z,noexecstack
 
@@ -163,7 +167,7 @@ Enclave_Security_Link_Flags := -Wl,-z,relro,-z,now,-z,noexecstack
 Enclave_Link_Flags := $(Enclave_Security_Link_Flags) \
     -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles -L$(SGX_LIBRARY_PATH) \
 	-Wl,--whole-archive -l$(Trts_Library_Name) -Wl,--no-whole-archive \
-	-Wl,--start-group -lsgx_tstdc -lsgx_tcxx -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group \
+	-Wl,--start-group -lsgx_tstdc -lsgx_tcxx -lsgx_pthread -l$(Crypto_Library_Name) -l$(Service_Library_Name) -lsgx_tsgxssl -lsgx_tsgxssl_crypto -Wl,--end-group \
 	-Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \
 	-Wl,-pie,-eenclave_entry -Wl,--export-dynamic  \
 	-Wl,--defsym,__ImageBase=0 \
@@ -235,7 +239,7 @@ endif
 ######## App Objects ########
 
 App/Enclave_u.h: $(SGX_EDGER8R) Enclave/Enclave.edl
-	@cd App && $(SGX_EDGER8R) --untrusted ../Enclave/Enclave.edl --search-path ../Enclave --search-path $(SGX_SDK)/include
+	@cd App && $(SGX_EDGER8R) --untrusted ../Enclave/Enclave.edl --search-path /opt/intel/sgxssl/include  --search-path ../Enclave --search-path $(SGX_SDK)/include
 	@echo "GEN  =>  $@"
 
 App/Enclave_u.c: App/Enclave_u.h
@@ -253,13 +257,13 @@ App/%.o: App/%.cpp App/Enclave_u.h
 	@echo "CXX  <=  $<"
 
 $(App_Name): App/Enclave_u.o $(App_Cpp_Objects)
-	@$(CXX) $^ -o $@ $(App_Link_Flags) $(Linker_Flags) 
+	@$(CXX) $^ -o $@ $(App_Link_Flags) $(Linker_Flags) -L/opt/intel/sgxssl/lib64
 	@echo "LINK =>  $@"
 
 ######## Enclave Objects ########
 
 Enclave/Enclave_t.h: $(SGX_EDGER8R) Enclave/Enclave.edl
-	@cd Enclave && $(SGX_EDGER8R) --trusted ../Enclave/Enclave.edl --search-path ../Enclave --search-path $(SGX_SDK)/include
+	@cd Enclave && $(SGX_EDGER8R) --trusted ../Enclave/Enclave.edl --search-path /opt/intel/sgxssl/include --search-path ../Enclave --search-path $(SGX_SDK)/include
 	@echo "GEN  =>  $@"
 
 Enclave/Enclave_t.c: Enclave/Enclave_t.h
@@ -269,13 +273,13 @@ Enclave/Enclave_t.o: Enclave/Enclave_t.c
 	@echo "CC   <=  $<"
 
 Enclave/%.o: Enclave/%.cpp
-	@$(CXX) $(SGX_COMMON_CXXFLAGS) $(Enclave_Cpp_Flags) -c $< -o $@
+	@$(CXX) $(SGX_COMMON_CXXFLAGS) $(Enclave_Cpp_Flags) $(Include_Paths_Enclave)  -c $< -o $@
 	@echo "CXX  <=  $<"
 
 $(Enclave_Cpp_Objects): Enclave/Enclave_t.h
 
 $(Enclave_Name): Enclave/Enclave_t.o $(Enclave_Cpp_Objects)
-	@$(CXX) $^ -o $@ $(Enclave_Link_Flags)
+	@$(CXX) $^ -o $@ -L/opt/intel/sgxssl/include -L/opt/intel/sgxssl/lib64 $(Enclave_Link_Flags)
 	@echo "LINK =>  $@"
 
 $(Signed_Enclave_Name): $(Enclave_Name)

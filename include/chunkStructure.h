@@ -82,6 +82,7 @@ typedef struct {
     uint32_t clientID;
     uint32_t dataSize;
     uint32_t currentItemNum;
+    uint64_t hammdist;
 } NetworkHead_t;
 
 typedef struct {
@@ -101,6 +102,12 @@ typedef struct {
     uint32_t length;
 } EnclaveRecipeEntry_t;
 
+//sendData:len+index+databuffer
+typedef struct {
+    uint32_t* dataBuffer;//the query res data of xi,i=[0,sendData[0]-1]
+    uint32_t* index;    //the resLen of query xi
+    uint32_t* sendData;// the first 4 bytes is the number of query
+}Query_batch_t;
 // typedef struct {
 //     uint8_t containerName[CONTAINER_ID_LENGTH]; 
 //     uint32_t offset;
