@@ -64,6 +64,17 @@ containers::containers()
 	sub_hammdist=hammdist/sub_index_num;
 }
 
+bool customCompare(const sub_information& p1, const sub_information& p2) {
+    if (p1.sub_key < p2.sub_key) {
+        return true;
+    } else if (p1.sub_key == p2.sub_key) {
+        return p1.identifiers < p2.identifiers;
+    }
+    return false;
+}
+bool compareFirst(const sub_information& p, uint32_t x) {
+    return p.sub_key < x;
+}
 void containers::random_128(uint64_t *temp_key)
 {
 	unsigned char rand[16]={0};
@@ -179,6 +190,9 @@ void containers::initialize()
 	containers::initialize_size=sign_data.size();
 
 	full_index.reserve(initialize_size);
+	sub_index_liner=new sub_information*[4];
+	for(int i=0;i<4;i++)sub_index_liner[i]=new sub_information[initialize_size];
+
 	sub_information sub_info[4];
 	bloom_parameters parameters;
     parameters.projected_element_count = initialize_size; // 预计插入initialize_size个元素
@@ -187,6 +201,7 @@ void containers::initialize()
 	parameters.random_seed=0xA5A5A5A5;
 	for(int i=0;i<4;i++)filters[i]=bloom_filter(parameters);
 	printf("1\n");
+	uint32_t sub_map_size= initialize_size;
 	while(full_index.size()<initialize_size)
 	{	
 		//random_128(temp_key);
@@ -201,48 +216,51 @@ void containers::initialize()
 		filters[1].insert(sub[1]);
 		filters[2].insert(sub[2]);
 		filters[3].insert(sub[3]);
-		sub_index1[sub[0]].push_back(out_id);
-		sub_index2[sub[1]].push_back(out_id);
-		sub_index3[sub[2]].push_back(out_id);
-		sub_index4[sub[3]].push_back(out_id);
+		for(int i=0;i<4;i++)
+		{
+			sub_info[i].sub_key=sub[i];
+			sub_info[i].identifiers=out_id;
+			sub_index_liner[i][out_id]=sub_info[i];
+		}
+
+		// sub_index1[sub[0]].push_back(out_id);
+		// sub_index2[sub[1]].push_back(out_id);
+		// sub_index3[sub[2]].push_back(out_id);
+		// sub_index4[sub[3]].push_back(out_id);
 		full_index.push_back(temp_information);
 		++out_id;
 	}
-	printf("size:%d，%d，%d，%d\n",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
+	//printf("size:%d，%d，%d，%d\n",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 	printf("2\n");
+	for(int i=0;i<4;i++){
+		std::sort(sub_index_liner[i],sub_index_liner[i]+initialize_size,customCompare);
+	}
+	int j[4]={0};
+	for(int i=0;i<sub_map_size;i++)
+	{
+		if(j[0]>initialize_size)break;
+		if(j[1]>initialize_size)break;
+		if(j[2]>initialize_size)break;
+		if(j[3]>initialize_size)break;
+		for(int k=0;k<4;k++){
+		uint32_t temp=sub_index_liner[k][j[k]].sub_key;
+		auto low=&sub_index_liner[k][j[k]];
+		auto its=low;
+		for(;its->sub_key==temp&&its<sub_index_liner[k]+initialize_size;its++,j[k]++);
+		sub_index[k][temp]=j[k];
+		}
+	}
 	return;
 }
 void containers::get_test_pool()
 {
 	uint64_t temp_key[2]={0};
-	// for(auto it : full_index)
-	// {
-	// 	if(test_pool.size()>=test_size)
-	// 	{
-	// 		return;
-	// 	}
-	// 	temp_key[0]=it.fullkey[0];
-	// 	temp_key[1]=it.fullkey[1];
-	// 	int h=0,y=0;
-	// 	uint64_t t=1;
-	// 	unsigned char rand[3]={0};
-	// 	sgx_read_rand(rand,2);
-	// 	h=rand[0]%3;
-	// 	for(int i=0;i<h;i++)
-	// 	{
-	//   		y=rand[i+1]%64;
-	// 		temp_key[0]=temp_key[0]^(t<<y);
-	// 		temp_key[1]=temp_key[1]^(t<<y);
-	// 	}
-	// 	test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
-	// }
-	for(int i=0,k=initialize_size/test_size/2;i<initialize_size;i+=k)
+	for(auto it : full_index)
 	{
 		if(test_pool.size()>=test_size)
 		{
 			return;
 		}
-		auto it=full_index[i];
 		temp_key[0]=it.fullkey[0];
 		temp_key[1]=it.fullkey[1];
 		int h=0,y=0;
@@ -258,6 +276,28 @@ void containers::get_test_pool()
 		}
 		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
 	}
+	// for(int i=0,k=initialize_size/test_size/2;i<initialize_size;i+=k)
+	// {
+	// 	if(test_pool.size()>=test_size)
+	// 	{
+	// 		return;
+	// 	}
+	// 	auto it=full_index[i];
+	// 	temp_key[0]=it.fullkey[0];
+	// 	temp_key[1]=it.fullkey[1];
+	// 	int h=0,y=0;
+	// 	uint64_t t=1;
+	// 	unsigned char rand[3]={0};
+	// 	sgx_read_rand(rand,2);
+	// 	h=rand[0]%3;
+	// 	for(int i=0;i<h;i++)
+	// 	{
+	//   		y=rand[i+1]%64;
+	// 		temp_key[0]=temp_key[0]^(t<<y);
+	// 		temp_key[1]=temp_key[1]^(t<<y);
+	// 	}
+	// 	test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
+	// }
 }
 std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 {
@@ -275,60 +315,76 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	uint64_t infoFullkey[2] ;uint32_t subInfo[4];
 	//tsl::hopscotch_map<uint32_t, std::vector<uint32_t>>::iterator got;
 	unordered_map<uint32_t, std::vector<uint32_t>>::iterator got;
+	vector<uint32_t> map2liner;
+	vector<uint32_t> miss_sub;
+	for(int i=0;i<4;i++){
 	for(auto& its:this->C_0_TO_subhammdis)
 	{
-		tmpsub1=sub[0]^its;
-		tmpsub2=sub[1]^its;
-		tmpsub3=sub[2]^its;
-		tmpsub4=sub[3]^its;
+		tmpsub1=sub[i]^its;
 	//	LOGGER("SUB FP INFO: %u %u %u %u",tmpsub1,tmpsub2,tmpsub3,tmpsub4);
 	//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 		//printf("num%d\n",candidate.size());
-		if(filters[0].contains(tmpsub1)){
-		auto it = sub_index1.find(tmpsub1);times++;bloomHit++;
-		if(it!=sub_index1.end())
+		if(filters[i].contains(tmpsub1)){
+		auto it = sub_index[i].find(tmpsub1);times++;bloomHit++;
+		if(it!=sub_index[i].end())
 		{
-			temp=it->second;
-			for(auto& got:temp){
-			candidate.insert(got);
-			}
-			}
-		}else bolomMiss++;
+			// temp=it->second;
+			// for(auto& got:temp){
+			// candidate.insert(got);
+			// }
+			map2liner.push_back(it->second);
+		}else {
+			miss_sub.push_back(tmpsub1);
+			bolomMiss++;}
+		}
 		
-		tmpsub2=sub[1]^its;
-		if(filters[1].contains(tmpsub2)){
-		auto it = sub_index2.find(tmpsub2);times++;bloomHit++;
-		if(it!=sub_index2.end())
-		{	
-			temp=it->second;
-			for(auto& got:temp){
-			candidate.insert(got); 
-			}
-		}
-		}else bolomMiss++;
+		// tmpsub2=sub[1]^its;
+		// if(filters[1].contains(tmpsub2)){
+		// auto it = sub_index2.find(tmpsub2);times++;bloomHit++;
+		// if(it!=sub_index2.end())
+		// {	
+		// 	temp=it->second;
+		// 	for(auto& got:temp){
+		// 	candidate.insert(got); 
+		// 	}
+		// }
+		// }else bolomMiss++;
 		
-		tmpsub3=sub[2]^its;
-		if(filters[2].contains(tmpsub3)){
-		auto it = sub_index3.find(tmpsub3);times++;bloomHit++;
-		if(it!=sub_index3.end())
-		{	
-			temp=it->second;
-			for(auto& got:temp){
-			candidate.insert(got);
-			}
-		}
-		}else bolomMiss++;
-		tmpsub4=sub[3]^its;
-		if(filters[3].contains(tmpsub4)){
-		auto it = sub_index4.find(tmpsub4);times++;bloomHit++;
-		if(it!=sub_index4.end())
-		{	
-			temp=it->second;times++;
-			for(auto& got:temp){
-			candidate.insert(got); 
-			}
-		}
-		}else bolomMiss++;
+		// tmpsub3=sub[2]^its;
+		// if(filters[2].contains(tmpsub3)){
+		// auto it = sub_index3.find(tmpsub3);times++;bloomHit++;
+		// if(it!=sub_index3.end())
+		// {	
+		// 	temp=it->second;
+		// 	for(auto& got:temp){
+		// 	candidate.insert(got);
+		// 	}
+		// }
+		// }else bolomMiss++;
+		// tmpsub4=sub[3]^its;
+		// if(filters[3].contains(tmpsub4)){
+		// auto it = sub_index4.find(tmpsub4);times++;bloomHit++;
+		// if(it!=sub_index4.end())
+		// {	
+		// 	temp=it->second;times++;
+		// 	for(auto& got:temp){
+		// 	candidate.insert(got); 
+		// 	}
+		// }
+		// }else bolomMiss++;
+	}
+	for(auto temp:miss_sub){
+		auto its = std::lower_bound(sub_index_liner[i], sub_index_liner[i]+initialize_size, temp,compareFirst);
+		for(;its->sub_key==temp&&its<sub_index_liner[i]+initialize_size;++its){
+		candidate.insert(its->identifiers);}
+	}
+	miss_sub.clear();
+	for(auto temp:map2liner){
+		auto x=temp-1;
+		for(;x>=0&&sub_index_liner[i][x].sub_key==sub_index_liner[i][temp-1].sub_key;--x){
+		candidate.insert(sub_index_liner[i][x].identifiers);}
+	}
+	map2liner.clear();
 	}
 	// for(auto& its:this->C_0_TO_subhammdis)
 	// {
@@ -337,13 +393,25 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	// 	auto it = sub_index2.find(tmpsub2);times++;bloomHit++;
 	// 	if(it!=sub_index2.end())
 	// 	{	
-	// 		temp=it->second;
-	// 		for(auto& got:temp){
-	// 		candidate.insert(got); 
-	// 		}
+	// 		map2liner.push_back(it->second);
 	// 	}
-	// 	}else bolomMiss++;
+	// 	}else {
+	// 		miss_sub.push_back(tmpsub2);
+	// 		bolomMiss++;}
 	// }
+	// for(auto temp:miss_sub){hit++;
+	// 	auto its = std::lower_bound(sub_index_liner[0], sub_index_liner[0]+initialize_size, temp,compareFirst);
+	// 	for(;its->sub_key==temp&&its<sub_index_liner[0]+initialize_size;++its){
+	// 	candidate.insert(its->identifiers);}
+	// }
+	// miss_sub.clear();
+	// for(auto temp:map2liner){
+	// 	auto x=temp-1;
+	// 	for(;x>=0&&sub_index_liner[0][x].sub_key==sub_index_liner[0][temp-1].sub_key;--x){
+	// 	candidate.insert(sub_index_liner[0][x].identifiers);}
+	// 	}
+	// }
+	// map2liner.clear();
 	// for(auto& its:this->C_0_TO_subhammdis)
 	// {
 	// 	tmpsub3=sub[2]^its;
