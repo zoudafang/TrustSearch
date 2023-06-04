@@ -215,34 +215,12 @@ void containers::initialize()
 void containers::get_test_pool()
 {
 	uint64_t temp_key[2]={0};
-	for(auto it : full_index)
-	{
-		if(test_pool.size()>=test_size)
-		{
-			return;
-		}
-		temp_key[0]=it.fullkey[0];
-		temp_key[1]=it.fullkey[1];
-		int h=0,y=0;
-		uint64_t t=1;
-		unsigned char rand[3]={0};
-		sgx_read_rand(rand,2);
-		h=rand[0]%3;
-		for(int i=0;i<h;i++)
-		{
-	  		y=rand[i+1]%64;
-			temp_key[0]=temp_key[0]^(t<<y);
-			temp_key[1]=temp_key[1]^(t<<y);
-		}
-		test_pool.push_back(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
-	}
-	// for(int i=0,k=initialize_size/test_size/2;i<initialize_size;i+=k)
+	// for(auto it : full_index)
 	// {
 	// 	if(test_pool.size()>=test_size)
 	// 	{
 	// 		return;
 	// 	}
-	// 	auto it=full_index[i];
 	// 	temp_key[0]=it.fullkey[0];
 	// 	temp_key[1]=it.fullkey[1];
 	// 	int h=0,y=0;
@@ -258,8 +236,30 @@ void containers::get_test_pool()
 	// 	}
 	// 	test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
 	// }
+	for(int i=0,k=initialize_size/test_size/2;i<initialize_size;i+=k)
+	{
+		if(test_pool.size()>=test_size)
+		{
+			return;
+		}
+		auto it=full_index[i];
+		temp_key[0]=it.fullkey[0];
+		temp_key[1]=it.fullkey[1];
+		int h=0,y=0;
+		uint64_t t=1;
+		unsigned char rand[3]={0};
+		sgx_read_rand(rand,2);
+		h=rand[0]%3;
+		for(int i=0;i<h;i++)
+		{
+	  		y=rand[i+1]%64;
+			temp_key[0]=temp_key[0]^(t<<y);
+			temp_key[1]=temp_key[1]^(t<<y);
+		}
+		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
+	}
 }
-std::set<uint32_t> containers::find_sim(uint64_t query[])
+std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 {
 	candidate.clear();
 	uint64_t tmpquery[2]={0};
@@ -268,11 +268,13 @@ std::set<uint32_t> containers::find_sim(uint64_t query[])
 	uint32_t sub[4]={0};
 	get_sub_fingerprint(sub,tmpquery);
 
+	static uint64_t bloomHit=0;static uint64_t bolomMiss=0;
 	uint32_t tmpsub1,tmpsub2,tmpsub3,tmpsub4=0;
 	vector<uint32_t> temp;
 	static int loopBegin=0;static int times=0;static int line_times=0;
 	uint64_t infoFullkey[2] ;uint32_t subInfo[4];
-	tsl::hopscotch_map<uint32_t, std::vector<uint32_t>>::iterator got;
+	//tsl::hopscotch_map<uint32_t, std::vector<uint32_t>>::iterator got;
+	unordered_map<uint32_t, std::vector<uint32_t>>::iterator got;
 	for(auto& its:this->C_0_TO_subhammdis)
 	{
 		tmpsub1=sub[0]^its;
@@ -283,7 +285,7 @@ std::set<uint32_t> containers::find_sim(uint64_t query[])
 	//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 		//printf("num%d\n",candidate.size());
 		if(filters[0].contains(tmpsub1)){
-		auto it = sub_index1.find(tmpsub1);times++;
+		auto it = sub_index1.find(tmpsub1);times++;bloomHit++;
 		if(it!=sub_index1.end())
 		{
 			temp=it->second;
@@ -291,27 +293,23 @@ std::set<uint32_t> containers::find_sim(uint64_t query[])
 			candidate.insert(got);
 			}
 			}
-		}
-	}
-	for(auto& its:this->C_0_TO_subhammdis)
-	{
+		}else bolomMiss++;
+		
 		tmpsub2=sub[1]^its;
 		if(filters[1].contains(tmpsub2)){
-		auto it = sub_index2.find(tmpsub2);
+		auto it = sub_index2.find(tmpsub2);times++;bloomHit++;
 		if(it!=sub_index2.end())
 		{	
-			temp=it->second;times++;
+			temp=it->second;
 			for(auto& got:temp){
 			candidate.insert(got); 
 			}
 		}
-		}
-	}
-	for(auto& its:this->C_0_TO_subhammdis)
-	{
+		}else bolomMiss++;
+		
 		tmpsub3=sub[2]^its;
 		if(filters[2].contains(tmpsub3)){
-		auto it = sub_index3.find(tmpsub3);times++;
+		auto it = sub_index3.find(tmpsub3);times++;bloomHit++;
 		if(it!=sub_index3.end())
 		{	
 			temp=it->second;
@@ -319,13 +317,10 @@ std::set<uint32_t> containers::find_sim(uint64_t query[])
 			candidate.insert(got);
 			}
 		}
-		}
-	}
-	for(auto& its:this->C_0_TO_subhammdis)
-	{
+		}else bolomMiss++;
 		tmpsub4=sub[3]^its;
 		if(filters[3].contains(tmpsub4)){
-		auto it = sub_index4.find(tmpsub4);times++;
+		auto it = sub_index4.find(tmpsub4);times++;bloomHit++;
 		if(it!=sub_index4.end())
 		{	
 			temp=it->second;times++;
@@ -333,11 +328,54 @@ std::set<uint32_t> containers::find_sim(uint64_t query[])
 			candidate.insert(got); 
 			}
 		}
-		}
+		}else bolomMiss++;
 	}
+	// for(auto& its:this->C_0_TO_subhammdis)
+	// {
+	// 	tmpsub2=sub[1]^its;
+	// 	if(filters[1].contains(tmpsub2)){
+	// 	auto it = sub_index2.find(tmpsub2);times++;bloomHit++;
+	// 	if(it!=sub_index2.end())
+	// 	{	
+	// 		temp=it->second;
+	// 		for(auto& got:temp){
+	// 		candidate.insert(got); 
+	// 		}
+	// 	}
+	// 	}else bolomMiss++;
+	// }
+	// for(auto& its:this->C_0_TO_subhammdis)
+	// {
+	// 	tmpsub3=sub[2]^its;
+	// 	if(filters[2].contains(tmpsub3)){
+	// 	auto it = sub_index3.find(tmpsub3);times++;bloomHit++;
+	// 	if(it!=sub_index3.end())
+	// 	{	
+	// 		temp=it->second;
+	// 		for(auto& got:temp){
+	// 		candidate.insert(got);
+	// 		}
+	// 	}
+	// 	}else bolomMiss++;
+	// }
+	// for(auto& its:this->C_0_TO_subhammdis)
+	// {
+	// 	tmpsub4=sub[3]^its;
+	// 	if(filters[3].contains(tmpsub4)){
+	// 	auto it = sub_index4.find(tmpsub4);times++;bloomHit++;
+	// 	if(it!=sub_index4.end())
+	// 	{	
+	// 		temp=it->second;times++;
+	// 		for(auto& got:temp){
+	// 		candidate.insert(got); 
+	// 		}
+	// 	}
+	// 	}else bolomMiss++;
+	// }
 	uint64_t cmp_hamm[2]={0};
 	uint64_t count=0;
 	//printf("times1:%d times2 %d\n",line_times,times);
+	//printf("bloomHit:%lu bloomMiss:%lu\n",bloomHit,bolomMiss);
 
 	information got_out;
 	//tsl::hopscotch_map<uint32_t,information>::const_iterator got_out;
@@ -429,7 +467,7 @@ void encall_find_one(void *dataptr,uint32_t* res,uint64_t hammdist)
     dataE);
 	printf("nums%d\n",(uint64_t*)dataE[0]);
 	uint64_t* data =  reinterpret_cast<uint64_t*>(dataE);
-	set<uint32_t> res_set=cont.find_sim(data);
+	unordered_set<uint32_t> res_set=cont.find_sim(data);
 	uint8_t* res_old=reinterpret_cast<uint8_t*>(res);
 	for(auto &it:res_set)
 	{
@@ -467,7 +505,7 @@ void encall_find_batch(void *dataptr,uint32_t* res,uint32_t len,uint32_t len_res
 	printf("query len=%d\n",len);
 	for(int i=0;i<len;i++){
 		temp2[0]=data[2*i];temp2[1]=data[2*i+1];
-		set<uint32_t> res_set=cont.find_sim(temp2);
+		unordered_set<uint32_t> res_set=cont.find_sim(temp2);
 		query.index[i]=res_set.size();
 		//printf("res_set.size()=%d\n",res_set.size());
 		for(auto &it:res_set)

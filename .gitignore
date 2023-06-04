@@ -8,3 +8,5 @@ App/*_u.h
 Enclave/*_t.c
 Enclave/*_t.h
 *.out
+img_code128.bin
+.vscode/settings.json

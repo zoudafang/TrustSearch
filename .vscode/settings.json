@@ -65,6 +65,13 @@
         "unordered_map": "cpp",
         "unordered_set": "cpp",
         "utility": "cpp",
-        "vector": "cpp"
+        "vector": "cpp",
+        "complex": "cpp",
+        "condition_variable": "cpp",
+        "map": "cpp",
+        "sgx_condition_variable": "cpp",
+        "typeindex": "cpp",
+        "*.tcc": "cpp",
+        "bit": "cpp"
     }
 }

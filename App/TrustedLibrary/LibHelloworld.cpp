@@ -13,7 +13,7 @@ void test_from_enclave(void){
 void read_data(std::string file_name,std::vector<std::pair<uint64_t,uint64_t>> &data){
     std::ifstream input(file_name, std::ios::binary);
     uint64_t high, low;
-    while (input.read(reinterpret_cast<char*>(&high), sizeof(high)) && input.read(reinterpret_cast<char*>(&low), sizeof(low))) {
+    while (data.size()<1000000&&input.read(reinterpret_cast<char*>(&high), sizeof(high)) && input.read(reinterpret_cast<char*>(&low), sizeof(low))) {
         data.emplace_back(high,low);
     }
     input.close();
