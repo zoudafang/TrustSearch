@@ -72,6 +72,8 @@
         "sgx_condition_variable": "cpp",
         "typeindex": "cpp",
         "*.tcc": "cpp",
-        "bit": "cpp"
+        "bit": "cpp",
+        "numeric": "cpp",
+        "random": "cpp"
     }
 }

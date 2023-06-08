@@ -56,8 +56,10 @@ uint32_t containers::initialize_size=450000;
 namespace{
 	containers cont;
 	std::vector<std::pair<uint64_t,uint64_t>> sign_data;
+	std::vector<uint32_t> targets_data;
 }
 
+unordered_map<uint32_t,uint32_t> target2val;
 containers::containers()
 {
 	sub_keybit=(int)keybit/sub_index_num;
@@ -187,12 +189,16 @@ void containers::initialize()
 	parameters.random_seed=0xA5A5A5A5;
 	for(int i=0;i<4;i++)filters[i]=bloom_filter(parameters);
 	printf("1\n");
+
+	unordered_set<std::pair<uint64_t,uint64_t>,pair_hash> full_index_set;
+
 	while(full_index.size()<initialize_size)
 	{	
 		//random_128(temp_key);
 		temp_information.fullkey[0]=sign_data[out_id].first;//temp_key[0];
 		temp_information.fullkey[1]=sign_data[out_id].second;//temp_key[1];
-		temp_information.identifier=out_id;
+		full_index_set.insert({temp_information.fullkey[0],temp_information.fullkey[1]});
+		temp_information.identifier=targets_data[out_id];
 		temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
 		get_sub_fingerprint(sub,temp_key);
 		//out_id=random_uuid();
@@ -208,6 +214,7 @@ void containers::initialize()
 		full_index.push_back(temp_information);
 		++out_id;
 	}
+	printf("fullsize:%d \n",full_index_set.size());
 	printf("size:%d，%d，%d，%d\n",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 	printf("2\n");
 	return;
@@ -215,34 +222,12 @@ void containers::initialize()
 void containers::get_test_pool()
 {
 	uint64_t temp_key[2]={0};
-	// for(auto it : full_index)
-	// {
-	// 	if(test_pool.size()>=test_size)
-	// 	{
-	// 		return;
-	// 	}
-	// 	temp_key[0]=it.fullkey[0];
-	// 	temp_key[1]=it.fullkey[1];
-	// 	int h=0,y=0;
-	// 	uint64_t t=1;
-	// 	unsigned char rand[3]={0};
-	// 	sgx_read_rand(rand,2);
-	// 	h=rand[0]%3;
-	// 	for(int i=0;i<h;i++)
-	// 	{
-	//   		y=rand[i+1]%64;
-	// 		temp_key[0]=temp_key[0]^(t<<y);
-	// 		temp_key[1]=temp_key[1]^(t<<y);
-	// 	}
-	// 	test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
-	// }
-	for(int i=0,k=initialize_size/test_size/2;i<initialize_size;i+=k)
+	for(auto it : full_index)
 	{
 		if(test_pool.size()>=test_size)
 		{
 			return;
 		}
-		auto it=full_index[i];
 		temp_key[0]=it.fullkey[0];
 		temp_key[1]=it.fullkey[1];
 		int h=0,y=0;
@@ -256,10 +241,38 @@ void containers::get_test_pool()
 			temp_key[0]=temp_key[0]^(t<<y);
 			temp_key[1]=temp_key[1]^(t<<y);
 		}
-		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
+		test_pool.push_back(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
+		test_targets.push_back(it.identifier);
 	}
+	
+	// uint32_t randomValue;
+   	// sgx_read_rand(reinterpret_cast<unsigned char*>(&randomValue), sizeof(randomValue));
+	// printf("rand1:%d\n",randomValue%initialize_size);
+	// for(int i=randomValue%initialize_size,k=initialize_size/test_size/2;i<initialize_size;i=(i+k)%initialize_size)
+	// {
+	// 	if(test_pool.size()>=test_size)
+	// 	{
+	// 		return;
+	// 	}
+	// 	auto it=full_index[i];
+	// 	temp_key[0]=it.fullkey[0];
+	// 	temp_key[1]=it.fullkey[1];
+	// 	int h=0,y=0;
+	// 	uint64_t t=1;
+	// 	unsigned char rand[3]={0};
+	// 	sgx_read_rand(rand,2);
+	// 	h=rand[0]%3;
+	// 	for(int i=0;i<h;i++)
+	// 	{
+	//   		y=rand[i+1]%64;
+	// 		temp_key[0]=temp_key[0]^(t<<y);
+	// 		temp_key[1]=temp_key[1]^(t<<y);
+	// 	}
+	// 	test_pool.push_back(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
+	// 	test_targets.push_back(it.identifier);
+	// }
 }
-std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
+std::unordered_set<uint32_t> containers::find_sim(uint64_t query[],uint32_t target)
 {
 	candidate.clear();
 	uint64_t tmpquery[2]={0};
@@ -339,7 +352,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	// 	{	
 	// 		temp=it->second;
 	// 		for(auto& got:temp){
-	// 		candidate.insert(got); 
+	// 		candidate.push_back(got); 
 	// 		}
 	// 	}
 	// 	}else bolomMiss++;
@@ -353,7 +366,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	// 	{	
 	// 		temp=it->second;
 	// 		for(auto& got:temp){
-	// 		candidate.insert(got);
+	// 		candidate.push_back(got);
 	// 		}
 	// 	}
 	// 	}else bolomMiss++;
@@ -367,7 +380,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	// 	{	
 	// 		temp=it->second;times++;
 	// 		for(auto& got:temp){
-	// 		candidate.insert(got); 
+	// 		candidate.push_back(got); 
 	// 		}
 	// 	}
 	// 	}else bolomMiss++;
@@ -379,6 +392,10 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 
 	information got_out;
 	//tsl::hopscotch_map<uint32_t,information>::const_iterator got_out;
+	unordered_set<uint32_t> candidate2;
+	//sort(candidate.begin(),candidate.end());
+	//printf("candidate size:%lu\n",candidate.size());
+	static int num=0,num2=0;
 	for(auto it = candidate.begin(); it != candidate.end();)
 	{
 		got_out=full_index[*it];
@@ -399,25 +416,59 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 			// 	cmp_hamm[1]=cmp_hamm[1]>>1;
 			// }
 			if(count<=hammdist){
-				successful_num++;
+				//printf("count:%lu\n",count);
+				num++;//candidate2.insert(*it);//num++;//successful_num++;//candidate2.insert(*it);successful_num++;
 				it++;}
-			else 
-				it=candidate.erase(it);
+			else {
+				//it++;
+				num2++;it=candidate.erase(it);}
 		}
+		//while(it!=candidate.end()&&*it==*(it-1))it++;
 	}
-	return candidate;
+	//compare the identifier for candidate2 with query[]
+	static uint32_t falseI=0;
+	vector<uint32_t> candidate3(candidate2.begin(),candidate2.end());
+	// sort(candidate3.begin(),candidate3.end(),[&](uint32_t a,uint32_t b){
+	// 	uint32_t dist=bitset<64>(query[0]^full_index[a].fullkey[0]).count()+bitset<64>(query[1]^full_index[a].fullkey[1]).count();
+	// 	uint32_t dist2=bitset<64>(query[0]^full_index[b].fullkey[0]).count()+bitset<64>(query[1]^full_index[b].fullkey[1]).count();
+	// 	return (dist)<(dist2);});
+	int tempfalse=falseI;
+	int success=0;
+	for(auto& val:candidate){
+		if(full_index[val].identifier!=target){
+		//printf("false %d,sl%d\n",full_index[candidate3[i]].identifier,target);
+		falseI++;}
+		else success++;
+	}
+	//printf("success %d,false:%d ,comm %d\n",success,falseI-tempfalse,target2val[target]);
+	printf("false:%d",falseI);
+	//printf("num:%d num2:%d sub%d\n",num,num2,num-num2);
+	//printf("candidate%lu num:%d\n",candidate3.size(),candidate.size());
+	successful_num+=candidate.size();
+	printf("successful_num:%lu\n",successful_num);
+	return unordered_set<uint32_t>();
 }
 void containers::test()
 {
+	printf("targetSize%d\n",targets_data.size());
+	for(auto &val:targets_data){
+		if(target2val.find(val)!=target2val.end())target2val[val]++;
+		else target2val[val]=1;
+	}
+	static int iw=0;
+	for(auto &val:target2val){
+		printf("key%d val:%d\n",val.first,val.second);if(val.second<1300)iw++;
+	}
+	printf("i:%d\n",iw);
 	printf("Test!\n");
-	uint64_t temp_key[2]={0};
+	uint64_t temp_key[2]={0};int i=0;
 	for(auto &itx : test_pool)
 	{
 		temp_key[0]=itx.first;
 		temp_key[1]=itx.second;
-		find_sim(temp_key);
+		find_sim(temp_key,test_targets[i]);i++;
 	}
-	
+
 }
 void containers::changeHammingDist(uint64_t hammdist)
 {
@@ -450,6 +501,12 @@ void encall_send_data(void *dataptr,size_t len)
 	sign_data.insert(sign_data.end(),data,data+len);
 	//printf("%d",sign_data.size());
 }
+void encall_send_targets(void *dataptr,size_t len)
+{
+	uint32_t* data =  reinterpret_cast<uint32_t*>(dataptr);
+	targets_data.insert(targets_data.end(),data,data+len);
+	//printf("%d",sign_data.size());
+}
 
 void encall_find_one(void *dataptr,uint32_t* res,uint64_t hammdist)
 {
@@ -467,17 +524,17 @@ void encall_find_one(void *dataptr,uint32_t* res,uint64_t hammdist)
     dataE);
 	printf("nums%d\n",(uint64_t*)dataE[0]);
 	uint64_t* data =  reinterpret_cast<uint64_t*>(dataE);
-	unordered_set<uint32_t> res_set=cont.find_sim(data);
+	//unordered_set<uint32_t> res_set=cont.find_sim(data);
 	uint8_t* res_old=reinterpret_cast<uint8_t*>(res);
-	for(auto &it:res_set)
-	{
-		*res=it;
-		res++;
-	}
+	// for(auto &it:res_set)
+	// {
+	// 	*res=it;
+	// 	res++;
+	// }
 	//*len=res_set.size();
 	cryptoObj->SessionKeyEnc(cipherCtx_,(uint8_t*)res_old,3000*4,sessionKey_,(uint8_t*)res_old);
 	//cryptoObj->SessionKeyEnc();
-	printf("Successfully found  photos! successful_num=%d.\n",res_set.size());
+	//printf("Successfully found  photos! successful_num=%d.\n",res_set.size());
 	//printf("%d",sign_data.size());
 }
 
@@ -503,17 +560,17 @@ void encall_find_batch(void *dataptr,uint32_t* res,uint32_t len,uint32_t len_res
 	uint64_t* data =  reinterpret_cast<uint64_t*>(dataE);
 	uint64_t temp2[2];
 	printf("query len=%d\n",len);
-	for(int i=0;i<len;i++){
-		temp2[0]=data[2*i];temp2[1]=data[2*i+1];
-		unordered_set<uint32_t> res_set=cont.find_sim(temp2);
-		query.index[i]=res_set.size();
-		//printf("res_set.size()=%d\n",res_set.size());
-		for(auto &it:res_set)
-		{
-			*(query.dataBuffer)=it;
-			query.dataBuffer++;
-		}
-	}
+	// for(int i=0;i<len;i++){
+	// 	temp2[0]=data[2*i];temp2[1]=data[2*i+1];
+	// 	unordered_set<uint32_t> res_set=cont.find_sim(temp2);
+	// 	query.index[i]=res_set.size();
+	// 	//printf("res_set.size()=%d\n",res_set.size());
+	// 	for(auto &it:res_set)
+	// 	{
+	// 		*(query.dataBuffer)=it;
+	// 		query.dataBuffer++;
+	// 	}
+	// }
 
 	printf("successful_num=%d\n",cont.successful_num);
 	//*len=res_set.size();
