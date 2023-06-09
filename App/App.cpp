@@ -212,12 +212,15 @@ int SGX_CDECL main(int argc, char *argv[])
 
 
     std::vector<std::pair<u_int64_t, u_int64_t>> res;
-    read_data("img_code128.bin",res);
+    std::vector<uint32_t> targets;
+    read_data("img_code128.bin",res,targets);
     
     uint64_t* testFull=new uint64_t[2];
     testFull[0]=res[2].first;testFull[1]=res[2].second;
     printf("testFull[0]:%lu, testFull[1]:%lu\n",testFull[0],testFull[1]);
-    send_data(res);
+    send_data(res,targets,0); 
+    //send data twice   
+    // for(int i=100000;i<100002;i++)send_data(res,targets,i); 
     //change!!!
     init_from_enclave();
     

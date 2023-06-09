@@ -62,7 +62,7 @@ public:
 	int successful_num=0;
 	unordered_set<uint32_t> candidate;
 	// unordered_map<uint32_t,information> full_index;
-	unordered_map<uint32_t,uint32_t>sub_index[4];
+	unordered_map<uint32_t,sub_information*>sub_index[4];
 	// tsl::hopscotch_map<uint32_t,information> full_index;
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index1;
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index2;

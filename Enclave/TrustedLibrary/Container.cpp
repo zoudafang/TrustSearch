@@ -56,6 +56,8 @@ uint32_t containers::initialize_size=450000;
 namespace{
 	containers cont;
 	std::vector<std::pair<uint64_t,uint64_t>> sign_data;
+	std::vector<uint32_t> targets_data;
+	std::unordered_map<uint32_t,uint32_t> hotspot_map[4];
 }
 
 containers::containers()
@@ -201,13 +203,13 @@ void containers::initialize()
 	parameters.random_seed=0xA5A5A5A5;
 	for(int i=0;i<4;i++)filters[i]=bloom_filter(parameters);
 	printf("1\n");
-	uint32_t sub_map_size= initialize_size;
+	uint32_t sub_map_size = initialize_size/20;//initialize_size
 	while(full_index.size()<initialize_size)
 	{	
 		//random_128(temp_key);
 		temp_information.fullkey[0]=sign_data[out_id].first;//temp_key[0];
 		temp_information.fullkey[1]=sign_data[out_id].second;//temp_key[1];
-		temp_information.identifier=out_id;
+		temp_information.identifier=targets_data[out_id];
 		temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
 		get_sub_fingerprint(sub,temp_key);
 		//out_id=random_uuid();
@@ -223,10 +225,10 @@ void containers::initialize()
 			sub_index_liner[i][out_id]=sub_info[i];
 		}
 
-		// sub_index1[sub[0]].push_back(out_id);
-		// sub_index2[sub[1]].push_back(out_id);
-		// sub_index3[sub[2]].push_back(out_id);
-		// sub_index4[sub[3]].push_back(out_id);
+		// sub_index[0][sub[0]].push_back(out_id);
+		// sub_index[1][sub[1]].push_back(out_id);
+		// sub_index[2][sub[2]].push_back(out_id);
+		// sub_index[3][sub[3]].push_back(out_id);
 		full_index.push_back(temp_information);
 		++out_id;
 	}
@@ -235,54 +237,34 @@ void containers::initialize()
 	for(int i=0;i<4;i++){
 		std::sort(sub_index_liner[i],sub_index_liner[i]+initialize_size,customCompare);
 	}
-	int j[4]={0};
+	sub_information* j[4]={0};
+	for(int i=0;i<4;i++)j[i]=&sub_index_liner[i][0];
+	printf("subsize:%d\n",sub_map_size);
 	for(int i=0;i<sub_map_size;i++)
 	{
-		if(j[0]>initialize_size)break;
-		if(j[1]>initialize_size)break;
-		if(j[2]>initialize_size)break;
-		if(j[3]>initialize_size)break;
+		for(int k=0;k<4;k++){if(j[k]>=sub_index_liner[k]+initialize_size)j[k]=sub_index_liner[k]+initialize_size-1;}
 		for(int k=0;k<4;k++){
-		uint32_t temp=sub_index_liner[k][j[k]].sub_key;
-		auto low=&sub_index_liner[k][j[k]];
-		auto its=low;
-		for(;its->sub_key==temp&&its<sub_index_liner[k]+initialize_size;its++,j[k]++);
-		sub_index[k][temp]=j[k];
+		uint32_t temp=(*j[k]).sub_key;
+		auto its=j[k];
+		sub_index[k][temp]=(j[k]);
+		for(;its->sub_key==temp&&its<sub_index_liner[k]+initialize_size;its++,j[k]++){;}
 		}
+	}
+	//printf sub_index size
+	for(int i=0;i<4;i++){
+		printf("sub_index%d size:%d\n",i,sub_index[i].size());
 	}
 	return;
 }
 void containers::get_test_pool()
 {
 	uint64_t temp_key[2]={0};
-	for(auto it : full_index)
-	{
-		if(test_pool.size()>=test_size)
-		{
-			return;
-		}
-		temp_key[0]=it.fullkey[0];
-		temp_key[1]=it.fullkey[1];
-		int h=0,y=0;
-		uint64_t t=1;
-		unsigned char rand[3]={0};
-		sgx_read_rand(rand,2);
-		h=rand[0]%3;
-		for(int i=0;i<h;i++)
-		{
-	  		y=rand[i+1]%64;
-			temp_key[0]=temp_key[0]^(t<<y);
-			temp_key[1]=temp_key[1]^(t<<y);
-		}
-		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
-	}
-	// for(int i=0,k=initialize_size/test_size/2;i<initialize_size;i+=k)
+	// for(auto it : full_index)
 	// {
 	// 	if(test_pool.size()>=test_size)
 	// 	{
 	// 		return;
 	// 	}
-	// 	auto it=full_index[i];
 	// 	temp_key[0]=it.fullkey[0];
 	// 	temp_key[1]=it.fullkey[1];
 	// 	int h=0,y=0;
@@ -298,6 +280,32 @@ void containers::get_test_pool()
 	// 	}
 	// 	test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
 	// }
+	
+	uint32_t randomValue;
+   	sgx_read_rand(reinterpret_cast<unsigned char*>(&randomValue), sizeof(randomValue));
+	printf("rand1:%d\n",randomValue%initialize_size);
+	for(int i=(300000)%initialize_size,k=initialize_size/test_size/2;i<initialize_size;i=(i+1)%initialize_size)
+	{
+		if(test_pool.size()>=test_size)
+		{
+			return;
+		}
+		auto it=full_index[i];
+		temp_key[0]=it.fullkey[0];
+		temp_key[1]=it.fullkey[1];
+		int h=0,y=0;
+		uint64_t t=1;
+		unsigned char rand[3]={0};
+		sgx_read_rand(rand,2);
+		h=rand[0]%3;
+		for(int i=0;i<h;i++)
+		{
+	  		y=rand[i+1]%64;
+			temp_key[0]=temp_key[0]^(t<<y);
+			temp_key[1]=temp_key[1]^(t<<y);
+		}
+		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
+	}
 }
 std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 {
@@ -315,8 +323,10 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	uint64_t infoFullkey[2] ;uint32_t subInfo[4];
 	//tsl::hopscotch_map<uint32_t, std::vector<uint32_t>>::iterator got;
 	unordered_map<uint32_t, std::vector<uint32_t>>::iterator got;
-	vector<uint32_t> map2liner;
+	vector<sub_information*> map2liner;
 	vector<uint32_t> miss_sub;
+	static int num=0;
+	static int hitmap=0;static int hitliner=0;
 	for(int i=0;i<4;i++){
 	for(auto& its:this->C_0_TO_subhammdis)
 	{
@@ -325,15 +335,20 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 		//printf("num%d\n",candidate.size());
 		if(filters[i].contains(tmpsub1)){
+			if(hotspot_map[i].find(tmpsub1)!=hotspot_map[i].end()){
+				hotspot_map[i][tmpsub1]+=1;
+			}else{
+				hotspot_map[i][tmpsub1]=1;
+			}
 		auto it = sub_index[i].find(tmpsub1);times++;bloomHit++;
 		if(it!=sub_index[i].end())
-		{
+		{++hitmap;
 			// temp=it->second;
 			// for(auto& got:temp){
 			// candidate.insert(got);
 			// }
 			map2liner.push_back(it->second);
-		}else {
+		}else {++hitliner;
 			miss_sub.push_back(tmpsub1);
 			bolomMiss++;}
 		}
@@ -373,18 +388,23 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 		// }
 		// }else bolomMiss++;
 	}
-	for(auto temp:miss_sub){
-		auto its = std::lower_bound(sub_index_liner[i], sub_index_liner[i]+initialize_size, temp,compareFirst);
-		for(;its->sub_key==temp&&its<sub_index_liner[i]+initialize_size;++its){
-		candidate.insert(its->identifiers);}
-	}
-	miss_sub.clear();
 	for(auto temp:map2liner){
-		auto x=temp-1;
-		for(;x>=0&&sub_index_liner[i][x].sub_key==sub_index_liner[i][temp-1].sub_key;--x){
-		candidate.insert(sub_index_liner[i][x].identifiers);}
+		uint32_t tempkey=(*temp).sub_key;
+		//uint32_t x=temp,tempkey=sub_index_liner[i][temp].sub_key;
+		auto its=temp;//&sub_index_liner[i][x];
+		for(;its<sub_index_liner[i]+initialize_size&&its->sub_key==tempkey;++its){
+		candidate.insert(its->identifiers);++num;
+		}
 	}
 	map2liner.clear();
+	for(auto temp:miss_sub){
+		auto its = std::lower_bound(sub_index_liner[i], sub_index_liner[i]+initialize_size, temp,compareFirst);
+			if(hotspot_map[i][temp]>0){sub_index[i][temp]=its;}
+		for(;its<sub_index_liner[i]+initialize_size&&its->sub_key==temp;++its){
+		candidate.insert(its->identifiers);++num;
+		}
+	}
+	miss_sub.clear();
 	}
 	// for(auto& its:this->C_0_TO_subhammdis)
 	// {
@@ -444,6 +464,8 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	uint64_t count=0;
 	//printf("times1:%d times2 %d\n",line_times,times);
 	//printf("bloomHit:%lu bloomMiss:%lu\n",bloomHit,bolomMiss);
+	//printf("num%d\n",num);
+	printf("hitmap %d hitliner %d \n",hitmap,hitliner);
 
 	information got_out;
 	//tsl::hopscotch_map<uint32_t,information>::const_iterator got_out;
@@ -473,7 +495,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 				it=candidate.erase(it);
 		}
 	}
-	return candidate;
+	return unordered_set<uint32_t>();
 }
 void containers::test()
 {
@@ -485,7 +507,14 @@ void containers::test()
 		temp_key[1]=itx.second;
 		find_sim(temp_key);
 	}
-	
+
+	// for(int i=0;i<4;i++){
+	// std::vector<pair<uint32_t,uint32_t>> result(hotspot_map[i].begin(),hotspot_map[i].end());
+	// std::sort(result.begin(), result.end(), [](const std::pair<int, int>& a, const std::pair<int, int>& b) {
+    // return a.second > b.second;
+	// });
+	// for(int j=0;j<100;j++)printf("%d %d\n",result[j].first,result[j].second);	
+	// }
 }
 void containers::changeHammingDist(uint64_t hammdist)
 {
@@ -518,7 +547,11 @@ void encall_send_data(void *dataptr,size_t len)
 	sign_data.insert(sign_data.end(),data,data+len);
 	//printf("%d",sign_data.size());
 }
-
+void encall_send_targets(void *dataptr,size_t len)
+{
+	uint32_t* data =  reinterpret_cast<uint32_t*>(dataptr);
+	targets_data.insert(targets_data.end(),data,data+len);
+}
 void encall_find_one(void *dataptr,uint32_t* res,uint64_t hammdist)
 {
 	cont.changeHammingDist(hammdist);

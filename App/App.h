@@ -65,8 +65,8 @@ void ecall_libcxx_functions(void);
 void init_from_enclave(void);
 void test_from_enclave(void);
 
-void read_data(std::string file_name,std::vector<std::pair<uint64_t,uint64_t>> &data);
-void send_data(std::vector<std::pair<uint64_t,uint64_t>> &data);
+void read_data(std::string file_name,std::vector<std::pair<uint64_t,uint64_t>> &data,std::vector<uint32_t> &data_target);
+void send_data(std::vector<std::pair<uint64_t,uint64_t>> &data,std::vector<uint32_t> &data_target,int rand);
 #if defined(__cplusplus)
 }
 #endif
