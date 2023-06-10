@@ -197,12 +197,12 @@ void containers::initialize()
 	for(int i=0;i<4;i++)sub_index_liner[i]=new sub_liner_node[initialize_size];
 
 	for(int i=0;i<4;i++){
-	lru_n[i]=lru_node{initialize_size/100,initialize_size/50,0,0,nullptr,nullptr,nullptr,nullptr};
+	lru_n[i]=lru_node{initialize_size/100,initialize_size/100,0,0,nullptr,nullptr,nullptr,nullptr};
 	sub_index_node* head1=new sub_index_node;
 	sub_liner_node* head2=new sub_liner_node;
 	lru_n[i].index_head=head1;lru_n[i].liner_head=head2;
 	lru_n[i].index_tail=head1;lru_n[i].liner_tail=head2;
-	sub_index_node node_temp{nullptr,nullptr,nullptr};
+	sub_index_node node_temp{sub_information{0,0},nullptr,nullptr};
 	}
 	sub_liner_node node_liner_temp{sub_information{0,0},nullptr,nullptr};
 
@@ -336,7 +336,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	uint64_t infoFullkey[2] ;uint32_t subInfo[4];
 	//tsl::hopscotch_map<uint32_t, std::vector<uint32_t>>::iterator got;
 	unordered_map<uint32_t, std::vector<uint32_t>>::iterator got;
-	vector<sub_index_node> map2liner;
+	vector<sub_index_node*> map2liner;
 	vector<uint32_t> miss_sub;
 	static int num=0;
 	static int hitmap=0;static int hitliner=0;
@@ -355,7 +355,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 			// for(auto& got:temp){
 			// candidate.insert(got);
 			// }
-			map2liner.push_back(*it->second);
+			map2liner.push_back(it->second);
 			lru_index_visit(i,it->second);
 		}else {
 			++hitliner;
@@ -399,9 +399,9 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 		// }else bolomMiss++;
 	}
 	for(auto temp:map2liner){
-		uint32_t tempkey=temp.sub_index->sub_info.sub_key;
+		uint32_t tempkey=temp->sub_info.sub_key;
 		//uint32_t x=temp,tempkey=sub_index_liner[i][temp].sub_key;
-		auto its=temp.sub_index;//&sub_index_liner[i][x];
+		auto its=temp;//&sub_index_liner[i][x];
 		for(;its<sub_index_liner[i]+initialize_size&&its->sub_info.sub_key==tempkey;++its){
 		candidate.insert(its->sub_info.identifiers);++num;
 		}
@@ -676,8 +676,8 @@ void lru_liner_add(int sub_i,sub_liner_node* node){
 void lru_index_add(int sub_i,unordered_map<uint32_t,sub_index_node*>& sub_index,sub_liner_node* node_liner){
 	// printf("lru_index_add%d\n",test);
 	//add node to the tail of the index list
-	sub_index_node* node=new sub_index_node{node_liner,nullptr,nullptr};
-	sub_index[node_liner->sub_info.sub_key]=node;
+	sub_index_node* node=node_liner;
+	sub_index[node->sub_info.sub_key]=node;
 	sub_index_node* temp=sub_index[node_liner->sub_info.sub_key];
 	lru_n[sub_i].index_tail->next=temp;
 	temp->pre=lru_n[sub_i].index_tail;
@@ -688,7 +688,8 @@ void lru_index_add(int sub_i,unordered_map<uint32_t,sub_index_node*>& sub_index,
 		sub_index_node* first=remove_node->next;
 		lru_n[sub_i].index_head->next=first;
 		first->pre=lru_n[sub_i].index_head;
-		sub_index.erase(remove_node->sub_index->sub_info.sub_key);
+		remove_node->pre=nullptr;remove_node->next=nullptr;
+		sub_index.erase(remove_node->sub_info.sub_key);
 	}else{lru_n[sub_i].index_size++;}
 	// printf("lru_index_add end%d\n",test);
 };

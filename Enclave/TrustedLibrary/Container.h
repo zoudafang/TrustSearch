@@ -55,11 +55,7 @@ typedef struct sub_liner_node{
 	sub_liner_node* pre;
 }sub_liner_node;
 
-typedef struct sub_index_node{
-	sub_liner_node* sub_index;
-	sub_index_node* next;
-	sub_index_node* pre;
-}sub_index_node;
+typedef struct sub_liner_node sub_index_node;
 
 typedef struct LRU_node{
 	uint32_t map_size;
