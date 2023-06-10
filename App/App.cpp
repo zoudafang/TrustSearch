@@ -220,7 +220,7 @@ int SGX_CDECL main(int argc, char *argv[])
     printf("testFull[0]:%lu, testFull[1]:%lu\n",testFull[0],testFull[1]);
     send_data(res,targets,0); 
     //send data twice   
-    // for(int i=100000;i<100002;i++)send_data(res,targets,i); 
+    //for(int i=100000;i<100002;i++)send_data(res,targets,i); 
     //change!!!
     init_from_enclave();
     
