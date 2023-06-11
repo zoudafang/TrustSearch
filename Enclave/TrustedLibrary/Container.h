@@ -49,27 +49,19 @@ struct sub_information
 	uint32_t sub_key;
 };
 
-typedef struct sub_liner_node{
-	sub_information sub_info;
-	sub_liner_node* next;
-}sub_liner_node;
 
 typedef struct sub_index_node{
 	uint32_t sub_key;
-	sub_liner_node* liner_node;
+	sub_information* liner_node;
 	sub_index_node* next;
 	sub_index_node* pre;
 }sub_index_node;
 
 typedef struct LRU_node{
 	uint32_t map_size;
-	uint32_t list_fifo_size;
 	uint32_t index_size;
-	uint32_t liner_size;
 	sub_index_node* index_head;
 	sub_index_node* index_tail;
-	sub_liner_node* liner_head;
-	sub_liner_node* liner_tail;
 }lru_node;
 
 class containers
@@ -91,7 +83,7 @@ public:
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index2;
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index3;
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index4;
-	sub_liner_node** sub_index_liner;
+	sub_information** sub_index_liner;
 	vector<information>full_index;
 	bloom_filter filters[4] ;
 	vector<uint32_t>C_0_TO_subhammdis; //用于与特征段做异或运算的所有数字的容器
@@ -108,7 +100,5 @@ public:
 	void test();
 };
 
-void lru_liner_visit(int sub_i,unordered_map<uint32_t,sub_index_node*>& sub_index,sub_liner_node* node);
 void lru_index_visit(int sub_i,sub_index_node* node);
-void lru_liner_add(int sub_i,sub_liner_node* node);
-void lru_index_add(int sub_i,unordered_map<uint32_t,sub_index_node*>& sub_index,sub_liner_node* node_liner);
+void lru_index_add(int sub_i,unordered_map<uint32_t,sub_index_node*>& sub_index,sub_information* node_liner);
