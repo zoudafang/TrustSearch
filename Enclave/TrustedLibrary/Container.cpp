@@ -197,14 +197,15 @@ void containers::initialize()
 	for(int i=0;i<4;i++)sub_index_liner[i]=new sub_liner_node[initialize_size];
 
 	for(int i=0;i<4;i++){
+	// lru_n[i]=lru_node{5,5,0,0,nullptr,nullptr,nullptr,nullptr};
 	lru_n[i]=lru_node{initialize_size/100,initialize_size/100,0,0,nullptr,nullptr,nullptr,nullptr};
 	sub_index_node* head1=new sub_index_node;
 	sub_liner_node* head2=new sub_liner_node;
 	lru_n[i].index_head=head1;lru_n[i].liner_head=head2;
 	lru_n[i].index_tail=head1;lru_n[i].liner_tail=head2;
-	sub_index_node node_temp{sub_information{0,0},nullptr,nullptr};
+	sub_index_node node_temp{0,nullptr,nullptr,nullptr};
 	}
-	sub_liner_node node_liner_temp{sub_information{0,0},nullptr,nullptr};
+	sub_liner_node node_liner_temp{sub_information{0,0},nullptr};
 
 	sub_information sub_info[4];
 	bloom_parameters parameters;
@@ -272,38 +273,30 @@ void containers::initialize()
 void containers::get_test_pool()
 {
 	uint64_t temp_key[2]={0};
-	// for(auto it : full_index)
-	// {
-	// 	if(test_pool.size()>=test_size/2)
-	// 	{
-	// 		break;
-	// 	}
-	// 	temp_key[0]=it.fullkey[0];
-	// 	temp_key[1]=it.fullkey[1];
-	// 	int h=0,y=0;
-	// 	uint64_t t=1;
-	// 	unsigned char rand[3]={0};
-	// 	sgx_read_rand(rand,2);
-	// 	h=rand[0]%3;
-	// 	for(int i=0;i<h;i++)
-	// 	{
-	//   		y=rand[i+1]%64;
-	// 		temp_key[0]=temp_key[0]^(t<<y);
-	// 		temp_key[1]=temp_key[1]^(t<<y);
-	// 	}
-	// 	test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
-	// }
-	
-	uint32_t randomValue;
-   	sgx_read_rand(reinterpret_cast<unsigned char*>(&randomValue), sizeof(randomValue));
-	printf("rand1:%d\n",randomValue%initialize_size);
-	for(int i=(randomValue)%initialize_size,k=initialize_size/test_size/2;i<initialize_size;i=(i+1)%initialize_size)
+	uint32_t begin=100,index=0;//begin:the first index of test
+	uint32_t skip=1;//skip query
+	uint32_t range=initialize_size;//range query
+   	// sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));
+
+	//for temporal Locality
+	vector<uint32_t> local_list;
+	uint32_t temp;
+	for(int i=0;i<100;i++){
+   	sgx_read_rand(reinterpret_cast<unsigned char*>(&temp), sizeof(temp));
+	local_list.push_back(temp%initialize_size);}
+
+	for(int i=0;i<initialize_size;i++)
 	{
 		if(test_pool.size()>=test_size)
 		{
 			return;
 		}
-		auto it=full_index[i];
+		index=(begin+(i*skip)%range);
+		// if(i%100==0) {sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));}//space locality
+		// sgx_read_rand(reinterpret_cast<unsigned char*>(&index), sizeof(index));//rand query
+		// index=local_list[index%local_list.size()];//temporal locality
+		index=index%initialize_size;
+		auto it=full_index[index];
 		temp_key[0]=it.fullkey[0];
 		temp_key[1]=it.fullkey[1];
 		int h=0,y=0;
@@ -346,7 +339,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 		tmpsub1=sub[i]^its;
 	//	LOGGER("SUB FP INFO: %u %u %u %u",tmpsub1,tmpsub2,tmpsub3,tmpsub4);
 	//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
-		//printf("num%d\n",candidate.size());
+
 		if(filters[i].contains(tmpsub1)){
 		auto it = sub_index[i].find(tmpsub1);times++;bloomHit++;
 		if(it!=sub_index[i].end())
@@ -399,9 +392,10 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 		// }else bolomMiss++;
 	}
 	for(auto temp:map2liner){
-		uint32_t tempkey=temp->sub_info.sub_key;
+		uint32_t tempkey=temp->sub_key;
 		//uint32_t x=temp,tempkey=sub_index_liner[i][temp].sub_key;
-		auto its=temp;//&sub_index_liner[i][x];
+		auto its=temp->liner_node;
+		//	if(its->sub_info.sub_key!=tempkey){printf("identify%d %d\n",temp->sub_info.sub_key,its->sub_info.sub_key);}
 		for(;its<sub_index_liner[i]+initialize_size&&its->sub_info.sub_key==tempkey;++its){
 		candidate.insert(its->sub_info.identifiers);++num;
 		}
@@ -410,7 +404,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	for(auto temp:miss_sub){
 		auto its = std::lower_bound(sub_index_liner[i], sub_index_liner[i]+initialize_size, temp,compareFirst);
 		if(its!=sub_index_liner[i]+initialize_size){
-			if(its->pre==nullptr)lru_liner_add(i,its);
+			if(its->next==nullptr)lru_liner_add(i,its);//&&its!=lru_n[i].liner_head
 			else lru_liner_visit(i,sub_index[i],its);
 		}
 		for(;its<sub_index_liner[i]+initialize_size&&its->sub_info.sub_key==temp;++its){
@@ -637,12 +631,12 @@ void encall_find_batch(void *dataptr,uint32_t* res,uint32_t len,uint32_t len_res
 int test=0;
 void lru_liner_visit(int sub_i,unordered_map<uint32_t,sub_index_node*>& sub_index,sub_liner_node* node){
 	// printf("lru_liner_visit%d\n",test);
-	if(node!=lru_n[sub_i].liner_tail)node->next->pre=node->pre;
-	else lru_n[sub_i].liner_tail=node->pre;
-	node->pre->next=node->next;
-	node->next=nullptr;
-	node->pre=nullptr;
-	lru_n[sub_i].liner_size--;
+	// if(node!=lru_n[sub_i].liner_tail)node->next->pre=node->pre;
+	// else lru_n[sub_i].liner_tail=node->pre;
+	// node->pre->next=node->next;
+	// node->next=nullptr;
+	// node->pre=nullptr;
+	// lru_n[sub_i].liner_size--;
 	lru_index_add(sub_i,sub_index,node);
 	// printf("lru_liner_visit end%d\n",test);
 };
@@ -661,24 +655,25 @@ void lru_liner_add(int sub_i,sub_liner_node* node){
 	// printf("lru_liner_add%d\n",lru_n[sub_i].liner_size);
 	//add node to the tail of the liner list
 	lru_n[sub_i].liner_tail->next=node;
-	node->pre=lru_n[sub_i].liner_tail;
+	// node->pre=lru_n[sub_i].liner_tail;
 	lru_n[sub_i].liner_tail=node;
 	//if the size of the liner list is larger than the max size,remove the first node
 	if(lru_n[sub_i].liner_size>=lru_n[sub_i].list_fifo_size){
 		sub_liner_node* remove_node=lru_n[sub_i].liner_head->next;
 		sub_liner_node* first=remove_node->next;
 		lru_n[sub_i].liner_head->next=first;
-		first->pre=lru_n[sub_i].liner_head;
-		remove_node->next=nullptr;remove_node->pre=nullptr;
+		// first->pre=lru_n[sub_i].liner_head;
+		remove_node->next=nullptr;
+		// remove_node->pre=nullptr;
 	}else{lru_n[sub_i].liner_size++;}
 	// printf("lru_liner_add end%d\n",test);
 };
 void lru_index_add(int sub_i,unordered_map<uint32_t,sub_index_node*>& sub_index,sub_liner_node* node_liner){
 	// printf("lru_index_add%d\n",test);
 	//add node to the tail of the index list
-	sub_index_node* node=node_liner;
-	sub_index[node->sub_info.sub_key]=node;
-	sub_index_node* temp=sub_index[node_liner->sub_info.sub_key];
+	sub_index_node* node=new sub_index_node{node_liner->sub_info.sub_key,node_liner,nullptr,nullptr};
+	sub_index[node->sub_key]=node;
+	sub_index_node* temp=node;//sub_index[node_liner->sub_info.sub_key];
 	lru_n[sub_i].index_tail->next=temp;
 	temp->pre=lru_n[sub_i].index_tail;
 	lru_n[sub_i].index_tail=temp;
@@ -689,7 +684,8 @@ void lru_index_add(int sub_i,unordered_map<uint32_t,sub_index_node*>& sub_index,
 		lru_n[sub_i].index_head->next=first;
 		first->pre=lru_n[sub_i].index_head;
 		remove_node->pre=nullptr;remove_node->next=nullptr;
-		sub_index.erase(remove_node->sub_info.sub_key);
+		sub_index.erase(remove_node->sub_key);
+		delete remove_node;
 	}else{lru_n[sub_i].index_size++;}
 	// printf("lru_index_add end%d\n",test);
 };

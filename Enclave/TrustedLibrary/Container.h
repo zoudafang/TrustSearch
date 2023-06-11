@@ -52,10 +52,14 @@ struct sub_information
 typedef struct sub_liner_node{
 	sub_information sub_info;
 	sub_liner_node* next;
-	sub_liner_node* pre;
 }sub_liner_node;
 
-typedef struct sub_liner_node sub_index_node;
+typedef struct sub_index_node{
+	uint32_t sub_key;
+	sub_liner_node* liner_node;
+	sub_index_node* next;
+	sub_index_node* pre;
+}sub_index_node;
 
 typedef struct LRU_node{
 	uint32_t map_size;
