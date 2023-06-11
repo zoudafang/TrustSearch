@@ -197,7 +197,7 @@ void containers::initialize()
 	for(int i=0;i<4;i++)sub_index_liner[i]=new sub_information[initialize_size];
 
 	for(int i=0;i<4;i++){
-	// lru_n[i]=lru_node{5,5,0,0,nullptr,nullptr,nullptr,nullptr};
+	// lru_n[i]=lru_node{1,0,nullptr,nullptr};
 	lru_n[i]=lru_node{initialize_size/100,0,nullptr,nullptr};
 	sub_index_node* head1=new sub_index_node;
 	lru_n[i].index_head=head1;
@@ -270,7 +270,7 @@ void containers::initialize()
 void containers::get_test_pool()
 {
 	uint64_t temp_key[2]={0};
-	uint32_t begin=100,index=0;//begin:the first index of test
+	uint32_t begin=0,index=0;//begin:the first index of test
 	uint32_t skip=1;//skip query
 	uint32_t range=initialize_size;//range query
    	sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));
@@ -289,7 +289,7 @@ void containers::get_test_pool()
 			return;
 		}
 		index=(begin+(i*skip)%range);
-		if(i%100==0) {sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));}//space locality
+		if(i%20==0) {sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));}//space locality
 		sgx_read_rand(reinterpret_cast<unsigned char*>(&index), sizeof(index));//rand query
 		index=local_list[index%local_list.size()];//temporal locality
 		index=index%initialize_size;
@@ -394,7 +394,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 		auto its=temp->liner_node;
 		//	if(its->sub_info.sub_key!=tempkey){printf("identify%d %d\n",temp->sub_info.sub_key,its->sub_info.sub_key);}
 		for(;its<sub_index_liner[i]+initialize_size&&its->sub_key==tempkey;++its){
-		candidate.insert(its->identifiers);++num;
+		candidate.emplace_hint(candidate.begin(),its->identifiers);++num;
 		}
 	}
 	map2liner.clear();
@@ -406,7 +406,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 			lru_index_add(i,sub_index[i],its);
 		}
 		for(;its<sub_index_liner[i]+initialize_size&&its->sub_key==temp;++its){
-		candidate.insert(its->identifiers);++num;
+		candidate.emplace_hint(candidate.begin(),its->identifiers);++num;
 		}
 	}
 	miss_sub.clear();
@@ -467,10 +467,10 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	// }
 	uint64_t cmp_hamm[2]={0};
 	uint64_t count=0;
-	//printf("times1:%d times2 %d\n",line_times,times);
+	// printf("times1:%d times2 %d\n",line_times,times);
 	//printf("bloomHit:%lu bloomMiss:%lu\n",bloomHit,bolomMiss);
 	//printf("num%d\n",num);
-	printf("hitmap %d hitliner %d \n",hitmap,hitliner);
+	// printf("hitmap %d hitliner %d \n",hitmap,hitliner);
 
 	information got_out;
 	//tsl::hopscotch_map<uint32_t,information>::const_iterator got_out;
