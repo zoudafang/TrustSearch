@@ -1,6 +1,7 @@
 #include "../App.h"
 #include "Enclave_u.h"
 #include <fstream>
+#include "../include/constVar.h"
 
 //change!!
 void init_from_enclave(void){
@@ -13,7 +14,7 @@ void test_from_enclave(void){
 void read_data(std::string file_name,std::vector<std::pair<uint64_t,uint64_t>> &data,std::vector<uint32_t> &data2){
     std::ifstream input(file_name, std::ios::binary);
     uint64_t high, low;uint32_t target;
-    while (data.size()<1000000&&input.read(reinterpret_cast<char*>(&high), sizeof(high)) && input.read(reinterpret_cast<char*>(&low), sizeof(low))) {
+    while (data.size()<test_data_len&&input.read(reinterpret_cast<char*>(&high), sizeof(high)) && input.read(reinterpret_cast<char*>(&low), sizeof(low))) {
         data.emplace_back(high,low);
 	    input.read(reinterpret_cast<char*>(&target),sizeof(target));
 	    data2.emplace_back(target);

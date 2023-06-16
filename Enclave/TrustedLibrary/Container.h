@@ -75,7 +75,7 @@ public:
 	vector<information>full_index;
 	bloom_filter filters[4] ;
 	vector<uint32_t>C_0_TO_subhammdis; //用于与特征段做异或运算的所有数字的容器
-	vector<pair<uint64_t,uint64_t>>test_pool;	vector<uint32_t> test_targets;
+	set<pair<uint64_t,uint64_t>>test_pool;
 	containers();
 	void random_128(uint64_t *temp_key);
 	void get_sub_fingerprint(uint32_t *sub_fingerprint,uint64_t *fingerprint);
@@ -84,17 +84,8 @@ public:
 	void prepare();
 	void initialize();
 	void changeHammingDist(uint64_t hammingdist);
-	std::unordered_set<uint32_t> find_sim(uint64_t query[],uint32_t target);
+	std::unordered_set<uint32_t> find_sim(uint64_t query[]);
 	void test();
-};
-
-struct pair_hash {
-    template <class T1, class T2>
-    std::size_t operator() (const std::pair<T1, T2>& p) const {
-        auto h1 = std::hash<T1>{}(p.first);
-        auto h2 = std::hash<T2>{}(p.second);
-        return h1 ^ h2;
-    }
 };
 
 

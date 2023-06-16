@@ -142,7 +142,6 @@ void ServerOptThread::Run(SSL* clientSSL) {
             printf("dist:%d\n",hammdist);
             uint32_t dataLen=sendBuf.header->dataSize/sizeof(uint64_t)/2;
             testFull=new uint64_t[dataLen*2];
-            printf("dalen:%d\n",dataLen);
             memcpy(testFull,temp,dataLen*2*sizeof(uint64_t));
             Query_batch_t queryBatch;
             queryBatch.sendData=new uint32_t[dataLen*QUERY_SIZE];
@@ -157,7 +156,6 @@ void ServerOptThread::Run(SSL* clientSSL) {
             endTime2 = std::chrono::steady_clock::now();
             duration2 = endTime2 - startTime2; // 计算持续时间
             printf("函数运行时间：%f秒\n", duration2.count());
-            printf("flag:%d\n",t);
             //send the answer to client
             dataSecureChannel_->SendData(clientSSL, (uint8_t*)queryBatch.sendData, 3000*4);
             break;}

@@ -18,6 +18,8 @@ static const char SERVER_IP[]="127.0.0.10";
 static const int SERVER_PORT=8082;
 static const uint32_t THREAD_STACK_SIZE = 8*1024*1024;
 
+static const uint32_t test_data_len=1281167;
+
 enum QUERY_ETPE {QUERY_ONE=0,QUERY_BATCH}; 
 static std::string p="kl9DWMr4us0PcFeZ";
 static uint8_t* const_sessionKey=reinterpret_cast<uint8_t*>(const_cast<char*>(p.c_str()));

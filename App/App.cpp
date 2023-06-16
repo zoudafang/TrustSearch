@@ -228,7 +228,7 @@ int SGX_CDECL main(int argc, char *argv[])
     
 	double costTime=double(endTime-startTime)/CLOCKS_PER_SEC;
     printf("The test took %lf seconds.\n",costTime);
-    start_server();
+    // start_server();
 
     /* Destroy the enclave */
     sgx_destroy_enclave(global_eid);

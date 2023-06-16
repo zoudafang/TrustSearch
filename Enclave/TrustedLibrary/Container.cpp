@@ -59,7 +59,6 @@ namespace{
 	std::vector<uint32_t> targets_data;
 }
 
-unordered_map<uint32_t,uint32_t> target2val;
 containers::containers()
 {
 	sub_keybit=(int)keybit/sub_index_num;
@@ -179,8 +178,9 @@ void containers::initialize()
 	uint32_t sub[4]={0};
 	information temp_information;
 	containers::initialize_size=sign_data.size();
+	sign_data.shrink_to_fit();targets_data.shrink_to_fit();
 
-	full_index.reserve(initialize_size);
+	full_index.reserve(initialize_size/500);
 	sub_information sub_info[4];
 	bloom_parameters parameters;
     parameters.projected_element_count = initialize_size; // 预计插入initialize_size个元素
@@ -190,14 +190,11 @@ void containers::initialize()
 	for(int i=0;i<4;i++)filters[i]=bloom_filter(parameters);
 	printf("1\n");
 
-	unordered_set<std::pair<uint64_t,uint64_t>,pair_hash> full_index_set;
-
-	while(full_index.size()<initialize_size)
+	while(out_id<initialize_size)
 	{	
 		//random_128(temp_key);
 		temp_information.fullkey[0]=sign_data[out_id].first;//temp_key[0];
 		temp_information.fullkey[1]=sign_data[out_id].second;//temp_key[1];
-		full_index_set.insert({temp_information.fullkey[0],temp_information.fullkey[1]});
 		temp_information.identifier=targets_data[out_id];
 		temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
 		get_sub_fingerprint(sub,temp_key);
@@ -214,47 +211,19 @@ void containers::initialize()
 		full_index.push_back(temp_information);
 		++out_id;
 	}
-	printf("fullsize:%d \n",full_index_set.size());
-	printf("size:%d，%d，%d，%d\n",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
+	// printf("size:%d，%d，%d，%d\n",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 	printf("2\n");
 	return;
 }
 void containers::get_test_pool()
 {
-	uint64_t temp_key[2]={0};
-	for(auto it : full_index)
-	{
-		if(test_pool.size()>=test_size)
-		{
-			return;
-		}
-		temp_key[0]=it.fullkey[0];
-		temp_key[1]=it.fullkey[1];
-		int h=0,y=0;
-		uint64_t t=1;
-		unsigned char rand[3]={0};
-		sgx_read_rand(rand,2);
-		h=rand[0]%3;
-		for(int i=0;i<h;i++)
-		{
-	  		y=rand[i+1]%64;
-			temp_key[0]=temp_key[0]^(t<<y);
-			temp_key[1]=temp_key[1]^(t<<y);
-		}
-		test_pool.push_back(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
-		test_targets.push_back(it.identifier);
-	}
-	
-	// uint32_t randomValue;
-   	// sgx_read_rand(reinterpret_cast<unsigned char*>(&randomValue), sizeof(randomValue));
-	// printf("rand1:%d\n",randomValue%initialize_size);
-	// for(int i=randomValue%initialize_size,k=initialize_size/test_size/2;i<initialize_size;i=(i+k)%initialize_size)
+	// uint64_t temp_key[2]={0};
+	// for(auto it : full_index)
 	// {
 	// 	if(test_pool.size()>=test_size)
 	// 	{
 	// 		return;
 	// 	}
-	// 	auto it=full_index[i];
 	// 	temp_key[0]=it.fullkey[0];
 	// 	temp_key[1]=it.fullkey[1];
 	// 	int h=0,y=0;
@@ -268,11 +237,52 @@ void containers::get_test_pool()
 	// 		temp_key[0]=temp_key[0]^(t<<y);
 	// 		temp_key[1]=temp_key[1]^(t<<y);
 	// 	}
-	// 	test_pool.push_back(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
-	// 	test_targets.push_back(it.identifier);
+	// 	test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
 	// }
+	
+	uint64_t temp_key[2]={0};
+	uint32_t begin=0,index=0;//begin:the first index of test
+	uint32_t skip=1;//skip query
+	uint32_t range=100;//range query
+	uint32_t space_local=20;
+   	sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));
+
+	//for temporal Locality
+	vector<uint32_t> local_list;
+	uint32_t temp;
+	for(int i=0;i<100;i++){
+   	sgx_read_rand(reinterpret_cast<unsigned char*>(&temp), sizeof(temp));
+	local_list.push_back(temp%initialize_size);}
+
+	for(int i=0;i<initialize_size;i++)
+	{	
+		if(test_pool.size()>=test_size)
+		{
+			return;
+		}
+		index=(begin+(i*skip)%range);
+		// if(i%100==0) {i=0;sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));}//space locality
+		// sgx_read_rand(reinterpret_cast<unsigned char*>(&index), sizeof(index));//rand query
+		// index=local_list[index%local_list.size()];//temporal locality
+		index=index%initialize_size;
+		auto it=full_index[index];
+		temp_key[0]=it.fullkey[0];
+		temp_key[1]=it.fullkey[1];
+		int h=0,y=0;
+		uint64_t t=1;
+		unsigned char rand[3]={0};
+		sgx_read_rand(rand,2);
+		h=rand[0]%3;
+		for(int i=0;i<h;i++)
+		{
+	  		y=rand[i+1]%64;
+			temp_key[0]=temp_key[0]^(t<<y);
+			temp_key[1]=temp_key[1]^(t<<y);
+		}
+		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
+	}
 }
-std::unordered_set<uint32_t> containers::find_sim(uint64_t query[],uint32_t target)
+std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 {
 	candidate.clear();
 	uint64_t tmpquery[2]={0};
@@ -282,6 +292,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[],uint32_t targ
 	get_sub_fingerprint(sub,tmpquery);
 
 	static uint64_t bloomHit=0;static uint64_t bolomMiss=0;
+	static uint64_t valid_query=0;static uint64_t invalid_query=0;
 	uint32_t tmpsub1,tmpsub2,tmpsub3,tmpsub4=0;
 	vector<uint32_t> temp;
 	static int loopBegin=0;static int times=0;static int line_times=0;
@@ -300,47 +311,47 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[],uint32_t targ
 		if(filters[0].contains(tmpsub1)){
 		auto it = sub_index1.find(tmpsub1);times++;bloomHit++;
 		if(it!=sub_index1.end())
-		{
+		{valid_query++;
 			temp=it->second;
 			for(auto& got:temp){
 			candidate.insert(got);
 			}
-			}
+			}else invalid_query++;
 		}else bolomMiss++;
 		
 		tmpsub2=sub[1]^its;
 		if(filters[1].contains(tmpsub2)){
 		auto it = sub_index2.find(tmpsub2);times++;bloomHit++;
 		if(it!=sub_index2.end())
-		{	
+		{	valid_query++;
 			temp=it->second;
 			for(auto& got:temp){
 			candidate.insert(got); 
 			}
-		}
+		}else invalid_query++;
 		}else bolomMiss++;
 		
 		tmpsub3=sub[2]^its;
 		if(filters[2].contains(tmpsub3)){
 		auto it = sub_index3.find(tmpsub3);times++;bloomHit++;
 		if(it!=sub_index3.end())
-		{	
+		{	valid_query++;
 			temp=it->second;
 			for(auto& got:temp){
 			candidate.insert(got);
 			}
-		}
+		}else invalid_query++;
 		}else bolomMiss++;
 		tmpsub4=sub[3]^its;
 		if(filters[3].contains(tmpsub4)){
 		auto it = sub_index4.find(tmpsub4);times++;bloomHit++;
 		if(it!=sub_index4.end())
-		{	
+		{	valid_query++;
 			temp=it->second;times++;
 			for(auto& got:temp){
 			candidate.insert(got); 
 			}
-		}
+		}else invalid_query++;
 		}else bolomMiss++;
 	}
 	// for(auto& its:this->C_0_TO_subhammdis)
@@ -388,14 +399,11 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[],uint32_t targ
 	uint64_t cmp_hamm[2]={0};
 	uint64_t count=0;
 	//printf("times1:%d times2 %d\n",line_times,times);
-	//printf("bloomHit:%lu bloomMiss:%lu\n",bloomHit,bolomMiss);
+	// printf("bloomHit:%lu bloomMiss:%lu\n",bloomHit,bolomMiss);
+	// printf("valid_query:%lu invalid_query:%lu,sum%lu\n",valid_query,invalid_query,valid_query+invalid_query);
 
 	information got_out;
 	//tsl::hopscotch_map<uint32_t,information>::const_iterator got_out;
-	unordered_set<uint32_t> candidate2;
-	//sort(candidate.begin(),candidate.end());
-	//printf("candidate size:%lu\n",candidate.size());
-	static int num=0,num2=0;
 	for(auto it = candidate.begin(); it != candidate.end();)
 	{
 		got_out=full_index[*it];
@@ -416,59 +424,23 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[],uint32_t targ
 			// 	cmp_hamm[1]=cmp_hamm[1]>>1;
 			// }
 			if(count<=hammdist){
-				//printf("count:%lu\n",count);
-				num++;//candidate2.insert(*it);//num++;//successful_num++;//candidate2.insert(*it);successful_num++;
-				it++;}
-			else {
-				//it++;
-				num2++;it=candidate.erase(it);}
+				it++;successful_num++;
+			}
+			else {it=candidate.erase(it);}
 		}
 		//while(it!=candidate.end()&&*it==*(it-1))it++;
 	}
-	//compare the identifier for candidate2 with query[]
-	static uint32_t falseI=0;
-	vector<uint32_t> candidate3(candidate2.begin(),candidate2.end());
-	// sort(candidate3.begin(),candidate3.end(),[&](uint32_t a,uint32_t b){
-	// 	uint32_t dist=bitset<64>(query[0]^full_index[a].fullkey[0]).count()+bitset<64>(query[1]^full_index[a].fullkey[1]).count();
-	// 	uint32_t dist2=bitset<64>(query[0]^full_index[b].fullkey[0]).count()+bitset<64>(query[1]^full_index[b].fullkey[1]).count();
-	// 	return (dist)<(dist2);});
-	int tempfalse=falseI;
-	int success=0;
-	for(auto& val:candidate){
-		if(full_index[val].identifier!=target){
-		//printf("false %d,sl%d\n",full_index[candidate3[i]].identifier,target);
-		falseI++;}
-		else success++;
-	}
-	//printf("success %d,false:%d ,comm %d\n",success,falseI-tempfalse,target2val[target]);
-	printf("false:%d",falseI);
-	//printf("num:%d num2:%d sub%d\n",num,num2,num-num2);
-	//printf("candidate%lu num:%d\n",candidate3.size(),candidate.size());
-	successful_num+=candidate.size();
-	printf("successful_num:%lu\n",successful_num);
-	return unordered_set<uint32_t>();
+	return candidate;
 }
 void containers::test()
 {
-	printf("targetSize%d\n",targets_data.size());
-	for(auto &val:targets_data){
-		if(target2val.find(val)!=target2val.end())target2val[val]++;
-		else target2val[val]=1;
-	}
-	static int iw=0;
-	for(auto &val:target2val){
-		printf("key%d val:%d\n",val.first,val.second);if(val.second<1300)iw++;
-	}
-	printf("i:%d\n",iw);
-	printf("Test!\n");
-	uint64_t temp_key[2]={0};int i=0;
+	uint64_t temp_key[2]={0};
 	for(auto &itx : test_pool)
 	{
 		temp_key[0]=itx.first;
 		temp_key[1]=itx.second;
-		find_sim(temp_key,test_targets[i]);i++;
+		find_sim(temp_key);
 	}
-
 }
 void containers::changeHammingDist(uint64_t hammdist)
 {
@@ -503,6 +475,8 @@ void encall_send_data(void *dataptr,size_t len)
 }
 void encall_send_targets(void *dataptr,size_t len)
 {
+	sign_data.reserve(test_data_len);
+	targets_data.reserve(test_data_len);
 	uint32_t* data =  reinterpret_cast<uint32_t*>(dataptr);
 	targets_data.insert(targets_data.end(),data,data+len);
 	//printf("%d",sign_data.size());
@@ -524,14 +498,14 @@ void encall_find_one(void *dataptr,uint32_t* res,uint64_t hammdist)
     dataE);
 	printf("nums%d\n",(uint64_t*)dataE[0]);
 	uint64_t* data =  reinterpret_cast<uint64_t*>(dataE);
-	//unordered_set<uint32_t> res_set=cont.find_sim(data);
+	unordered_set<uint32_t> res_set=cont.find_sim(data);
 	uint8_t* res_old=reinterpret_cast<uint8_t*>(res);
-	// for(auto &it:res_set)
-	// {
-	// 	*res=it;
-	// 	res++;
-	// }
-	//*len=res_set.size();
+	for(auto &it:res_set)
+	{
+		*res=it;
+		res++;
+	}
+	// *len=res_set.size();
 	cryptoObj->SessionKeyEnc(cipherCtx_,(uint8_t*)res_old,3000*4,sessionKey_,(uint8_t*)res_old);
 	//cryptoObj->SessionKeyEnc();
 	//printf("Successfully found  photos! successful_num=%d.\n",res_set.size());
@@ -546,35 +520,34 @@ void encall_find_batch(void *dataptr,uint32_t* res,uint32_t len,uint32_t len_res
     EVP_CIPHER_CTX* cipherCtx_ = EVP_CIPHER_CTX_new();
     uint8_t* sessionKey_=const_sessionKey;
 	uint8_t* dataE =reinterpret_cast<uint8_t*>(dataptr);
-	printf("saonaiso%llu\n",(uint64_t*)dataE[199]);
 	int dataSize = sizeof(uint64_t)*len*2;
     cryptoObj->SessionKeyDec(cipherCtx_, dataE,
     dataSize, sessionKey_,
     dataE);
-	uint8_t* res_old=reinterpret_cast<uint8_t*>(res);
+	uint8_t* res_old=reinterpret_cast<uint8_t*>(res);//res=query times + success num of query i + targets of query i
 	Query_batch_t query;
 	query.sendData=res;
-	*(query.sendData)=len;
+	*(query.sendData)=len;		//write query times to res
 	query.index=query.sendData+sizeof(uint32_t);
 	query.dataBuffer=query.sendData+sizeof(uint32_t)*(len+1);
 	uint64_t* data =  reinterpret_cast<uint64_t*>(dataE);
 	uint64_t temp2[2];
 	printf("query len=%d\n",len);
-	// for(int i=0;i<len;i++){
-	// 	temp2[0]=data[2*i];temp2[1]=data[2*i+1];
-	// 	unordered_set<uint32_t> res_set=cont.find_sim(temp2);
-	// 	query.index[i]=res_set.size();
-	// 	//printf("res_set.size()=%d\n",res_set.size());
-	// 	for(auto &it:res_set)
-	// 	{
-	// 		*(query.dataBuffer)=it;
-	// 		query.dataBuffer++;
-	// 	}
-	// }
+	for(int i=0;i<len;i++){
+		temp2[0]=data[2*i];temp2[1]=data[2*i+1];
+		unordered_set<uint32_t> res_set=cont.find_sim(temp2);
+		query.index[i]=res_set.size();		//write success num of query i to res
+		//printf("res_set.size()=%d\n",res_set.size());
+		for(auto &it:res_set)
+		{
+			*(query.dataBuffer)=it;
+			query.dataBuffer++;		//write targets of query i to res
+		}
+	}
 
 	printf("successful_num=%d\n",cont.successful_num);
 	//*len=res_set.size();
 	cryptoObj->SessionKeyEnc(cipherCtx_,(uint8_t*)res_old,QUERY_SIZE*sizeof(uint32_t)*len,sessionKey_,(uint8_t*)res_old);
 	//printf("Successfully found  photos! successful_num=%d.\n",res_set.size());
-	printf("%d",sign_data.size());
+	printf("sign_data_size %d\n",sign_data.size());
 }

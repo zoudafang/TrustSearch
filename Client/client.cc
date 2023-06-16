@@ -69,7 +69,7 @@ int main(int argc, char* argv[]){
     uint8_t* sessionKey_=const_sessionKey;
 
 
-    std::vector<std::pair<uint64_t, uint64_t>> res;
+    std::vector<std::pair<uint64_t,uint64_t>> res;
     readData("../../img_code128.bin",res);
 
     
@@ -77,7 +77,7 @@ int main(int argc, char* argv[]){
     // std::chrono::duration<double> duration2;
     // startTime2 = std::chrono::steady_clock::now(); 
 
-    // //test query and receive ,one query
+    // //----------------test query and receive ,one query------------------
     // uint64_t* encData=new uint64_t[2];
     // SendMsgBuffer_t sendMsgBuffer;
     // sendMsgBuffer.sendBuffer=(uint8_t*)malloc(sizeof(NetworkHead_t)+16);
@@ -112,7 +112,7 @@ int main(int argc, char* argv[]){
     uint32_t query_num=1000,query_size=sizeof(uint64_t)*query_num*2;
     uint64_t* encData=new uint64_t[query_num*2];
     for(int i=0;i<query_num*2;i+=2){
-        encData[i]=res[i/2].first;encData[i+1]=res[i/2].second;printf("encData[%d]=%llu\n",i,encData[i]);
+        encData[i]=res[i/2].first;encData[i+1]=res[i/2].second;printf("encData[%d]=%llu\n",i/2,encData[i]);
     }
     SendMsgBuffer_t sendMsgBuffer;
     sendMsgBuffer.sendBuffer=(uint8_t*)malloc(sizeof(NetworkHead_t)+sizeof(uint64_t)*query_num*2);
@@ -155,12 +155,16 @@ int main(int argc, char* argv[]){
         query_batch.index=query_batch.sendData+sizeof(uint32_t);
         query_batch.dataBuffer=query_batch.index+query_num*sizeof(uint32_t);
         printf("query_num=%d\n",query_num);
+        int successful_num=0;
         for(int i=0;i<query_num;i++){
-          //  printf("index=%d\n",query_batch.index[i]);
+            successful_num+=query_batch.index[i];
+            for(int j=0;j<query_batch.index[i];j++){
+            // printf("n: %u",query_batch.dataBuffer[i]);
+          }
         }
         endTime2 = std::chrono::steady_clock::now(); // 记录结束时间
         duration2 = endTime2 - startTime2; // 计算持续时间
-        printf("函数运行时间：%f秒\n", duration2.count());
+        printf("success_num:%d,函数运行时间：%f秒\n", successful_num,duration2.count());
     }
 
 //     //sessionKeyObj->GeneratingSecret(sessionKey, serverConnection, clientID);
@@ -191,9 +195,10 @@ int main(int argc, char* argv[]){
 }
 void readData(std::string file_name,std::vector<std::pair<uint64_t,uint64_t>> &data){
     std::ifstream input(file_name, std::ios::binary);
-    uint64_t high, low;
+    uint64_t high, low;uint32_t target;
     while (input.read(reinterpret_cast<char*>(&high), sizeof(high)) && input.read(reinterpret_cast<char*>(&low), sizeof(low))) {
         data.emplace_back(high,low);
+        input.read(reinterpret_cast<char*>(&target), sizeof(target));//read the target of sign_data
     }
     input.close();
 }
