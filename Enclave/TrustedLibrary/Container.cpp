@@ -20,7 +20,7 @@ uint64_t containers::keybit=128;
 uint64_t containers::hammdist=8;
 uint64_t containers::sub_index_num=4;
 uint32_t containers::test_size=1000;
-uint32_t containers::initialize_size=450000;
+uint32_t containers::initialize_size=0;
 
 // void log(const char *file_name, const char *function_name, size_t line, const char *fmt, ...) {
 // #ifdef DEBUG
@@ -177,42 +177,41 @@ void containers::initialize()
 	uint32_t out_id=0;
 	uint32_t sub[4]={0};
 	information temp_information;
-	containers::initialize_size=sign_data.size();
-	sign_data.shrink_to_fit();targets_data.shrink_to_fit();
+	// containers::initialize_size=sign_data.size();
+	// sign_data.shrink_to_fit();targets_data.shrink_to_fit();
 
 	full_index.reserve(initialize_size/500);
 	sub_information sub_info[4];
 	bloom_parameters parameters;
-    parameters.projected_element_count = initialize_size; // 预计插入initialize_size个元素
+    parameters.projected_element_count = test_data_len;//initialize_size; // 预计插入initialize_size个元素
     parameters.false_positive_probability = 0.01; // 期望的误判率为0.1
     parameters.compute_optimal_parameters(); // 计算最优参数
 	parameters.random_seed=0xA5A5A5A5;
 	for(int i=0;i<4;i++)filters[i]=bloom_filter(parameters);
-	printf("1\n");
 
-	while(out_id<initialize_size)
-	{	
-		//random_128(temp_key);
-		temp_information.fullkey[0]=sign_data[out_id].first;//temp_key[0];
-		temp_information.fullkey[1]=sign_data[out_id].second;//temp_key[1];
-		temp_information.identifier=targets_data[out_id];
-		temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
-		get_sub_fingerprint(sub,temp_key);
-		//out_id=random_uuid();
+	// uint32_t key_index=0;
+	// while(full_index.size()<initialize_size)
+	// {	
+	// 	//random_128(temp_key);
+	// 	temp_information.fullkey[0]=sign_data[key_index].first;//temp_key[0];
+	// 	temp_information.fullkey[1]=sign_data[key_index].second;//temp_key[1];
+	// 	// temp_information.identifier=targets_data[out_id];
+	// 	temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
+	// 	get_sub_fingerprint(sub,temp_key);
+	// 	out_id=random_uuid();
 
-		filters[0].insert(sub[0]);
-		filters[1].insert(sub[1]);
-		filters[2].insert(sub[2]);
-		filters[3].insert(sub[3]);
-		sub_index1[sub[0]].push_back(out_id);
-		sub_index2[sub[1]].push_back(out_id);
-		sub_index3[sub[2]].push_back(out_id);
-		sub_index4[sub[3]].push_back(out_id);
-		full_index.push_back(temp_information);
-		++out_id;
-	}
+	// 	filters[0].insert(sub[0]);
+	// 	filters[1].insert(sub[1]);
+	// 	filters[2].insert(sub[2]);
+	// 	filters[3].insert(sub[3]);
+	// 	sub_index1[sub[0]].push_back(out_id);
+	// 	sub_index2[sub[1]].push_back(out_id);
+	// 	sub_index3[sub[2]].push_back(out_id);
+	// 	sub_index4[sub[3]].push_back(out_id);
+	// 	full_index[out_id]=(temp_information);
+	// 	++key_index;
+	// }
 	// printf("size:%d，%d，%d，%d\n",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
-	printf("2\n");
 	return;
 }
 void containers::get_test_pool()
@@ -239,7 +238,7 @@ void containers::get_test_pool()
 	// 	}
 	// 	test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
 	// }
-	
+
 	uint64_t temp_key[2]={0};
 	uint32_t begin=0,index=0;//begin:the first index of test
 	uint32_t skip=1;//skip query
@@ -261,8 +260,8 @@ void containers::get_test_pool()
 			return;
 		}
 		index=(begin+(i*skip)%range);
-		// if(i%100==0) {i=0;sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));}//space locality
-		// sgx_read_rand(reinterpret_cast<unsigned char*>(&index), sizeof(index));//rand query
+		if(i%100==0) {i=0;sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));}//space locality
+		sgx_read_rand(reinterpret_cast<unsigned char*>(&index), sizeof(index));//rand query
 		// index=local_list[index%local_list.size()];//temporal locality
 		index=index%initialize_size;
 		auto it=full_index[index];
@@ -400,7 +399,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	uint64_t count=0;
 	//printf("times1:%d times2 %d\n",line_times,times);
 	// printf("bloomHit:%lu bloomMiss:%lu\n",bloomHit,bolomMiss);
-	// printf("valid_query:%lu invalid_query:%lu,sum%lu\n",valid_query,invalid_query,valid_query+invalid_query);
+	printf("valid_query:%lu invalid_query:%lu,sum%lu\n",valid_query,invalid_query,valid_query+invalid_query);
 
 	information got_out;
 	//tsl::hopscotch_map<uint32_t,information>::const_iterator got_out;
@@ -428,7 +427,6 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 			}
 			else {it=candidate.erase(it);}
 		}
-		//while(it!=candidate.end()&&*it==*(it-1))it++;
 	}
 	return candidate;
 }
@@ -457,26 +455,59 @@ void init()
 	printf("c_o size: %d\n",cont.C_0_TO_subhammdis.size());
 	printf("Init!\n");
 	cont.initialize();
-	cont.get_test_pool();
-	printf("The full index entry is: %d \n",cont.full_index.size());
-	printf("The number of queries is: %d \n",cont.test_pool.size());
+	// cont.get_test_pool();
+	// printf("The full index entry is: %d \n",cont.full_index.size());
+	// printf("The number of queries is: %d \n",cont.test_pool.size());
 }
 void test_run()
 {
 	cont.test();
 	printf("Successfully found similar photos! successful_num=%d.\n",cont.successful_num);
 }
+void init_test_pool(){
+	cont.get_test_pool();
+	printf("The full index entry is: %d \n",cont.full_index.size());
+	printf("The number of queries is: %d \n",cont.test_pool.size());
+}
 
 void encall_send_data(void *dataptr,size_t len)
 {
+	sign_data.clear();
+	sign_data.reserve(test_data_len);
 	std::pair<uint64_t, uint64_t>* data =  reinterpret_cast<std::pair<uint64_t, uint64_t>*>(dataptr);
 	sign_data.insert(sign_data.end(),data,data+len);
-	//printf("%d",sign_data.size());
+
+	cont.initialize_size+=len;
+	uint64_t temp_key[2]={0};
+	static uint32_t out_id=0;
+	uint32_t sub[4]={0};
+	information temp_information;
+	uint32_t key_index=0;
+	for(auto& tmp:sign_data)
+	{	
+		temp_information.fullkey[0]=tmp.first;//temp_key[0];
+		temp_information.fullkey[1]=tmp.second;//temp_key[1];
+		// temp_information.identifier=targets_data[out_id];
+		temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
+		cont.get_sub_fingerprint(sub,temp_key);
+		// out_id=cont.random_uuid();
+
+		cont.filters[0].insert(sub[0]);
+		cont.filters[1].insert(sub[1]);
+		cont.filters[2].insert(sub[2]);
+		cont.filters[3].insert(sub[3]);
+		cont.sub_index1[sub[0]].push_back(out_id);
+		cont.sub_index2[sub[1]].push_back(out_id);
+		cont.sub_index3[sub[2]].push_back(out_id);
+		cont.sub_index4[sub[3]].push_back(out_id);
+		cont.full_index[out_id]=(temp_information);
+		++key_index;++out_id;
+	}
 }
 void encall_send_targets(void *dataptr,size_t len)
 {
-	sign_data.reserve(test_data_len);
-	targets_data.reserve(test_data_len);
+	targets_data.clear();
+	targets_data.reserve(sendKey_batch_size);
 	uint32_t* data =  reinterpret_cast<uint32_t*>(dataptr);
 	targets_data.insert(targets_data.end(),data,data+len);
 	//printf("%d",sign_data.size());

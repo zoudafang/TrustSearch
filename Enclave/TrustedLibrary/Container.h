@@ -38,10 +38,9 @@ using namespace std;
 
 struct information
 {
-	uint32_t identifier;
+	// uint32_t identifier;
 	uint64_t fullkey[2];
 	uint16_t location=111;
-	//uint64_t count;
 };
 
 struct sub_information
@@ -62,7 +61,7 @@ public:
 	static uint32_t test_size;
 	int successful_num=0;
 	unordered_set<uint32_t> candidate;
-	// unordered_map<uint32_t,information> full_index;
+	unordered_map<uint32_t,information> full_index;
 	unordered_map<uint32_t,vector<uint32_t>>sub_index1;
 	unordered_map<uint32_t,vector<uint32_t>>sub_index2;
 	unordered_map<uint32_t,vector<uint32_t>>sub_index3;
@@ -72,7 +71,7 @@ public:
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index2;
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index3;
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index4;
-	vector<information>full_index;
+	// vector<information>full_index;
 	bloom_filter filters[4] ;
 	vector<uint32_t>C_0_TO_subhammdis; //用于与特征段做异或运算的所有数字的容器
 	set<pair<uint64_t,uint64_t>>test_pool;

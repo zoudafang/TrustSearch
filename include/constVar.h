@@ -6,7 +6,7 @@
 // the type of chunker
 enum CHUNKER_TYPE {FIXED_SIZE_CHUNKING = 0, FAST_CDC, FSL_TRACE, UBC_TRACE};
 
-
+//for multi-index
 enum DATA_TYPE_SET {DATA_CHUNK = 0, RECIPE_END, DATA_SEGMENT_END_FLAG}; 
 static const char SERVER_CERT[] = "key/server/server.crt";
 static const char SERVER_KEY[] = "key/server/server.key";
@@ -14,12 +14,15 @@ static const char CLIENT_CERT[] = "../../key/client/client.crt";
 static const char CLIENT_KEY[] = "../../key/client/client.key";
 static const char CA_CERT[] = "key/ca/ca.crt";//注意可执行文件和key文件的相对路径
 static const char CA_CERT_CLIENT[] = "../../key/ca/ca.crt";//注意可执行文件和key文件的相对路径
-static const char SERVER_IP[]="127.0.0.10";
-static const int SERVER_PORT=8082;
+
+static const char SERVER_IP[]="127.0.0.10";     //server ip
+static const int SERVER_PORT=8082;      //server port
 static const uint32_t THREAD_STACK_SIZE = 8*1024*1024;
 
-static const uint32_t test_data_len=1281167;
+static const uint32_t test_data_len=201167;     //the test data length
+static const uint32_t sendKey_batch_size=512;   //the batch size of sending to enclave
 
+// for DEBE 
 enum QUERY_ETPE {QUERY_ONE=0,QUERY_BATCH}; 
 static std::string p="kl9DWMr4us0PcFeZ";
 static uint8_t* const_sessionKey=reinterpret_cast<uint8_t*>(const_cast<char*>(p.c_str()));

@@ -218,9 +218,10 @@ int SGX_CDECL main(int argc, char *argv[])
     uint64_t* testFull=new uint64_t[2];
     testFull[0]=res[2].first;testFull[1]=res[2].second;
     printf("testFull[0]:%lu, testFull[1]:%lu\n",testFull[0],testFull[1]);
-    send_data(res,targets);
     //change!!!
     init_from_enclave();
+    send_data(res,targets);
+    init_test_pool(global_eid);
     
     clock_t startTime=clock();
     test_from_enclave();

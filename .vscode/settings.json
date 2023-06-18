@@ -74,6 +74,10 @@
         "*.tcc": "cpp",
         "bit": "cpp",
         "numeric": "cpp",
-        "random": "cpp"
-    }
+        "random": "cpp",
+        "memory_resource": "cpp",
+        "cinttypes": "cpp",
+        "variant": "cpp"
+    },
+    "cmake.sourceDirectory": "/home/zhangjia/SGX-Search-2q1/Client"
 }
