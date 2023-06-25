@@ -220,7 +220,8 @@ int SGX_CDECL main(int argc, char *argv[])
     printf("testFull[0]:%lu, testFull[1]:%lu\n",testFull[0],testFull[1]);
     //change!!!
     init_from_enclave();
-    send_data(res,targets);
+    send_data(res,targets,0);
+    // for(int i=0;i<4;i++)send_data(res,targets,11111+i);
     init_test_pool(global_eid);
     
     clock_t startTime=clock();

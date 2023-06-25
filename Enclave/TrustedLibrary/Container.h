@@ -72,7 +72,7 @@ public:
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index3;
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index4;
 	// vector<information>full_index;
-	bloom_filter filters[4] ;
+	bloom_filter filters[4];
 	vector<uint32_t>C_0_TO_subhammdis; //用于与特征段做异或运算的所有数字的容器
 	set<pair<uint64_t,uint64_t>>test_pool;
 	containers();

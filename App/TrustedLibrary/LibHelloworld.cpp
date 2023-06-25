@@ -21,7 +21,7 @@ void read_data(std::string file_name,std::vector<std::pair<uint64_t,uint64_t>> &
     }
     input.close();
 }
-void send_data(std::vector<std::pair<uint64_t,uint64_t>> &full_key,std::vector<uint32_t> &targets){
+void send_data(std::vector<std::pair<uint64_t,uint64_t>> &full_key,std::vector<uint32_t> &targets,int f){
     //send 128 full_key to Enclave
     const size_t count=sendKey_batch_size;
     uint32_t remain_size=full_key.size();
@@ -29,6 +29,10 @@ void send_data(std::vector<std::pair<uint64_t,uint64_t>> &full_key,std::vector<u
 
     while(remain_size>0){
         size_t send_size=remain_size>count?count:remain_size;
+        for(int i=0;i<send_size;i++){
+            data_ptr[i].first^=f;
+            data_ptr[i].second^=f;
+        }
         encall_send_data(global_eid,data_ptr,send_size);
         remain_size-=send_size;
         data_ptr+=send_size;

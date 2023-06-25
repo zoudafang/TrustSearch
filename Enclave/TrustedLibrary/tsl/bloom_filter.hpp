@@ -530,12 +530,12 @@ protected:
       else
       {
          std::copy(predef_salt, predef_salt + predef_salt_count, std::back_inserter(salt_));
-         int rand1,rand2;
+         int rand1=100,rand2=200;
          //srand(static_cast<unsigned int>(random_seed_));
-         sgx_read_rand(reinterpret_cast<unsigned char*>(&rand1), sizeof(rand1));
-         sgx_read_rand(reinterpret_cast<unsigned char*>(&rand2), sizeof(rand2));
          while (salt_.size() < salt_count_)
          {
+            sgx_read_rand(reinterpret_cast<unsigned char*>(&rand1), sizeof(rand1));
+            sgx_read_rand(reinterpret_cast<unsigned char*>(&rand2), sizeof(rand2));
             bloom_type current_salt = static_cast<bloom_type>(rand1) * static_cast<bloom_type>(rand2);
 
             if (0 == current_salt)

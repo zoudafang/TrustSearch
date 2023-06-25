@@ -180,15 +180,14 @@ void containers::initialize()
 	// containers::initialize_size=sign_data.size();
 	// sign_data.shrink_to_fit();targets_data.shrink_to_fit();
 
-	full_index.reserve(initialize_size/500);
+	// full_index.reserve(initialize_size/500);
 	sub_information sub_info[4];
 	bloom_parameters parameters;
     parameters.projected_element_count = test_data_len;//initialize_size; // 预计插入initialize_size个元素
     parameters.false_positive_probability = 0.01; // 期望的误判率为0.1
-    parameters.compute_optimal_parameters(); // 计算最优参数
 	parameters.random_seed=0xA5A5A5A5;
+    parameters.compute_optimal_parameters(); // 计算最优参数
 	for(int i=0;i<4;i++)filters[i]=bloom_filter(parameters);
-
 	// uint32_t key_index=0;
 	// while(full_index.size()<initialize_size)
 	// {	
@@ -308,98 +307,98 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 		//printf("num%d\n",candidate.size());
 		if(filters[0].contains(tmpsub1)){
-		auto it = sub_index1.find(tmpsub1);times++;bloomHit++;
+		auto it = sub_index1.find(tmpsub1);//times++;bloomHit++;
 		if(it!=sub_index1.end())
-		{valid_query++;
+		{//valid_query++;
 			temp=it->second;
 			for(auto& got:temp){
 			candidate.insert(got);
 			}
-			}else invalid_query++;
-		}else bolomMiss++;
+			}//else invalid_query++;
+		}//else bolomMiss++;
 		
 		tmpsub2=sub[1]^its;
 		if(filters[1].contains(tmpsub2)){
-		auto it = sub_index2.find(tmpsub2);times++;bloomHit++;
+		auto it = sub_index2.find(tmpsub2);//times++;bloomHit++;
 		if(it!=sub_index2.end())
-		{	valid_query++;
+		{	//valid_query++;
 			temp=it->second;
 			for(auto& got:temp){
 			candidate.insert(got); 
 			}
-		}else invalid_query++;
-		}else bolomMiss++;
+		}//else invalid_query++;
+		}//else bolomMiss++;
 		
 		tmpsub3=sub[2]^its;
 		if(filters[2].contains(tmpsub3)){
-		auto it = sub_index3.find(tmpsub3);times++;bloomHit++;
+		auto it = sub_index3.find(tmpsub3);//times++;bloomHit++;
 		if(it!=sub_index3.end())
-		{	valid_query++;
+		{	//valid_query++;
 			temp=it->second;
 			for(auto& got:temp){
 			candidate.insert(got);
 			}
-		}else invalid_query++;
-		}else bolomMiss++;
+		}//else invalid_query++;
+		}//else bolomMiss++;
 		tmpsub4=sub[3]^its;
 		if(filters[3].contains(tmpsub4)){
-		auto it = sub_index4.find(tmpsub4);times++;bloomHit++;
+		auto it = sub_index4.find(tmpsub4);//times++;bloomHit++;
 		if(it!=sub_index4.end())
-		{	valid_query++;
+		{	//valid_query++;
 			temp=it->second;times++;
 			for(auto& got:temp){
 			candidate.insert(got); 
 			}
-		}else invalid_query++;
-		}else bolomMiss++;
+		}//else invalid_query++;
+		}//else bolomMiss++;
 	}
 	// for(auto& its:this->C_0_TO_subhammdis)
 	// {
 	// 	tmpsub2=sub[1]^its;
 	// 	if(filters[1].contains(tmpsub2)){
-	// 	auto it = sub_index2.find(tmpsub2);times++;bloomHit++;
+	// 	auto it = sub_index2.find(tmpsub2);//times++;bloomHit++;
 	// 	if(it!=sub_index2.end())
 	// 	{	
 	// 		temp=it->second;
 	// 		for(auto& got:temp){
-	// 		candidate.push_back(got); 
+	// 		candidate.insert(got); 
 	// 		}
 	// 	}
-	// 	}else bolomMiss++;
+	// 	}//else bolomMiss++;
 	// }
 	// for(auto& its:this->C_0_TO_subhammdis)
 	// {
 	// 	tmpsub3=sub[2]^its;
 	// 	if(filters[2].contains(tmpsub3)){
-	// 	auto it = sub_index3.find(tmpsub3);times++;bloomHit++;
+	// 	auto it = sub_index3.find(tmpsub3);//times++;bloomHit++;
 	// 	if(it!=sub_index3.end())
 	// 	{	
 	// 		temp=it->second;
 	// 		for(auto& got:temp){
-	// 		candidate.push_back(got);
+	// 		candidate.insert(got);
 	// 		}
 	// 	}
-	// 	}else bolomMiss++;
+	// 	}//else bolomMiss++;
 	// }
 	// for(auto& its:this->C_0_TO_subhammdis)
 	// {
 	// 	tmpsub4=sub[3]^its;
 	// 	if(filters[3].contains(tmpsub4)){
-	// 	auto it = sub_index4.find(tmpsub4);times++;bloomHit++;
+	// 	auto it = sub_index4.find(tmpsub4);//times++;bloomHit++;
 	// 	if(it!=sub_index4.end())
 	// 	{	
-	// 		temp=it->second;times++;
+	// 		temp=it->second;//times++;
 	// 		for(auto& got:temp){
-	// 		candidate.push_back(got); 
+	// 		candidate.insert(got); 
 	// 		}
 	// 	}
-	// 	}else bolomMiss++;
+	// 	}//else bolomMiss++;
 	// }
 	uint64_t cmp_hamm[2]={0};
 	uint64_t count=0;
 	//printf("times1:%d times2 %d\n",line_times,times);
 	// printf("bloomHit:%lu bloomMiss:%lu\n",bloomHit,bolomMiss);
-	printf("valid_query:%lu invalid_query:%lu,sum%lu\n",valid_query,invalid_query,valid_query+invalid_query);
+	//printf("valid_query:%lu invalid_query:%lu,sum%lu\n",valid_query,invalid_query,valid_query+invalid_query);
 
 	information got_out;
 	//tsl::hopscotch_map<uint32_t,information>::const_iterator got_out;
@@ -472,10 +471,10 @@ void init_test_pool(){
 
 void encall_send_data(void *dataptr,size_t len)
 {
-	sign_data.clear();
-	sign_data.reserve(test_data_len);
+	// sign_data.clear();
+	// sign_data.reserve(sendKey_batch_size);
 	std::pair<uint64_t, uint64_t>* data =  reinterpret_cast<std::pair<uint64_t, uint64_t>*>(dataptr);
-	sign_data.insert(sign_data.end(),data,data+len);
+	// sign_data.insert(sign_data.end(),data,data+len);
 
 	cont.initialize_size+=len;
 	uint64_t temp_key[2]={0};
@@ -483,8 +482,9 @@ void encall_send_data(void *dataptr,size_t len)
 	uint32_t sub[4]={0};
 	information temp_information;
 	uint32_t key_index=0;
-	for(auto& tmp:sign_data)
-	{	
+	std::pair<uint64_t, uint64_t> tmp;
+	for(int i=0;i<len;i++)//auto& tmp:sign_data
+	{	tmp=data[i];
 		temp_information.fullkey[0]=tmp.first;//temp_key[0];
 		temp_information.fullkey[1]=tmp.second;//temp_key[1];
 		// temp_information.identifier=targets_data[out_id];

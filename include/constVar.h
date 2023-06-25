@@ -19,7 +19,7 @@ static const char SERVER_IP[]="127.0.0.10";     //server ip
 static const int SERVER_PORT=8082;      //server port
 static const uint32_t THREAD_STACK_SIZE = 8*1024*1024;
 
-static const uint32_t test_data_len=201167;     //the test data length
+static const uint32_t test_data_len=1281167;     //the test data length
 static const uint32_t sendKey_batch_size=512;   //the batch size of sending to enclave
 
 // for DEBE 
