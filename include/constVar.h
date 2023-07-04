@@ -6,7 +6,7 @@
 // the type of chunker
 enum CHUNKER_TYPE {FIXED_SIZE_CHUNKING = 0, FAST_CDC, FSL_TRACE, UBC_TRACE};
 
-
+//for SGX-Search
 enum DATA_TYPE_SET {DATA_CHUNK = 0, RECIPE_END, DATA_SEGMENT_END_FLAG}; 
 static const char SERVER_CERT[] = "key/server/server.crt";
 static const char SERVER_KEY[] = "key/server/server.key";
@@ -18,6 +18,10 @@ static const char SERVER_IP[]="127.0.0.10";
 static const int SERVER_PORT=8082;
 static const uint32_t THREAD_STACK_SIZE = 8*1024*1024;
 
+static const uint32_t DATA_LEN=5124668;
+static const uint32_t SEND_BATCH_LEN=512;
+
+//for DEBE
 enum QUERY_ETPE {QUERY_ONE=0,QUERY_BATCH}; 
 static std::string p="kl9DWMr4us0PcFeZ";
 static uint8_t* const_sessionKey=reinterpret_cast<uint8_t*>(const_cast<char*>(p.c_str()));

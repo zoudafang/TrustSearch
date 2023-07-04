@@ -194,6 +194,11 @@ void ocall_print_string(const char *str)
      */
     printf("%s", str);
 }
+void ocall_get_timeNow(uint64_t* time){
+    std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+    long long nanosSinceEpoch = std::chrono::duration_cast<std::chrono::nanoseconds>(t2.time_since_epoch()).count();
+    *time=static_cast<uint64_t>(nanosSinceEpoch);
+}
 
 void start_server();
 /* Application entry */
@@ -213,16 +218,12 @@ int SGX_CDECL main(int argc, char *argv[])
 
     std::vector<std::pair<u_int64_t, u_int64_t>> res;
     std::vector<uint32_t> targets;
-    read_data("img_code128.bin",res,targets);
+    read_data("img_code512.bin",res,targets);
     
-    uint64_t* testFull=new uint64_t[2];
-    testFull[0]=res[2].first;testFull[1]=res[2].second;
-    printf("testFull[0]:%lu, testFull[1]:%lu\n",testFull[0],testFull[1]);
-    send_data(res,targets,0); 
-    //send data twice   
-    // for(int i=100000;i<100002;i++)send_data(res,targets,i); 
     //change!!!
     init_from_enclave();
+    send_data(res,targets); 
+    init_after_send_data();
     
     clock_t startTime=clock();
     test_from_enclave();
@@ -230,7 +231,7 @@ int SGX_CDECL main(int argc, char *argv[])
     
 	double costTime=double(endTime-startTime)/CLOCKS_PER_SEC;
     printf("The test took %lf seconds.\n",costTime);
-    start_server();
+    // start_server();
 
     /* Destroy the enclave */
     sgx_destroy_enclave(global_eid);

@@ -37,10 +37,9 @@ using namespace std;
 
 struct information
 {
-	uint32_t identifier;
+	// uint32_t target;
 	uint64_t fullkey[2];
 	uint16_t location=111;
-	//uint64_t count;
 };
 
 struct sub_information
@@ -74,10 +73,12 @@ public:
 	uint64_t sub_hammdist;
 	static uint32_t initialize_size;
 	static uint32_t test_size;
+	static uint32_t sub_map_size;
 	int successful_num=0;
-	unordered_set<uint32_t> candidate;
+	//unordered_set<uint32_t> candidate;
 	// unordered_map<uint32_t,information> full_index;
 	unordered_map<uint32_t,sub_index_node*>sub_index[4];
+	
 	// tsl::hopscotch_map<uint32_t,information> full_index;
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index1;
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index2;
@@ -85,8 +86,9 @@ public:
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index4;
 	sub_information** sub_index_liner;
 	vector<information>full_index;
-	bloom_filter filters[4] ;
-	vector<uint32_t>C_0_TO_subhammdis; //用于与特征段做异或运算的所有数字的容器
+	bloom_filter filters[4];bloom_filter sub_filters[4];
+	sub_index_node** sub_nodes;
+	vector<uint32_t>C_0_TO_subhammdis[2]; //用于与特征段做异或运算的所有数字的容器
 	set<pair<uint64_t,uint64_t>>test_pool;
 	containers();
 	void random_128(uint64_t *temp_key);
@@ -96,6 +98,7 @@ public:
 	void prepare();
 	void initialize();
 	void changeHammingDist(uint64_t hammingdist);
+	void init_after_recv_data();
 	std::unordered_set<uint32_t> find_sim(uint64_t query[]);
 	void test();
 };

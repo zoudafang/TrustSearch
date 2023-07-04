@@ -38,6 +38,7 @@
 #include <stdarg.h>
 #include <string>
 #include <vector>
+#include <chrono>
 #include "sgx_error.h"       /* sgx_status_t */
 #include "sgx_eid.h"     /* sgx_enclave_id_t */
 
@@ -64,9 +65,9 @@ void ecall_libcxx_functions(void);
 //change!!
 void init_from_enclave(void);
 void test_from_enclave(void);
-
+void init_after_send_data(void);
 void read_data(std::string file_name,std::vector<std::pair<uint64_t,uint64_t>> &data,std::vector<uint32_t> &data_target);
-void send_data(std::vector<std::pair<uint64_t,uint64_t>> &data,std::vector<uint32_t> &data_target,int rand);
+void send_data(std::vector<std::pair<uint64_t,uint64_t>> &data,std::vector<uint32_t> &data_target);
 #if defined(__cplusplus)
 }
 #endif
