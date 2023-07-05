@@ -68,7 +68,19 @@ namespace{
 containers::containers()
 {
 	sub_keybit=(int)keybit/sub_index_num;
-	sub_hammdist=hammdist/sub_index_num;
+	// sub_hammdist=hammdist/sub_index_num;
+	for(int j=hammdist-sub_index_num+1;j>0;){//the sum of sub_hammdist is hammdist - sub_index_num + 1
+		for(int i=0;i<sub_index_num;i++)
+		{
+			if(j<=0)break;
+			sub_hammdist[i]++;		//if hammdist=8,sub_hammdist={1,1,1,2}
+			j--;
+		}
+	}
+	for(int i=0;i<sub_index_num;i++)
+	{
+		printf("sub_hammdist[%d]=%d\n",i,sub_hammdist[i]);
+	}
 }
 
 bool customCompare(const sub_information& p1, const sub_information& p2) {
@@ -115,16 +127,12 @@ uint32_t containers::random_uuid()
 	id++;
 	return id;
 }
-void containers::prepare()
+void containers::prepare(uint32_t sub_hammdist,vector<uint32_t>&C_0_TO_subhammdis)
 {
 	LOGGER("Prepare");
 	int tmp1,tmp2,tmp3,tmp4=1;
 	int tmp=0;
 	uint32_t tmpx=0;
-	for(int i=0;i<32;i++)
-	{
-		this->C_0_TO_subhammdis[1].push_back(1<<i);
-	}
 	this->C_0_TO_subhammdis[1].push_back(0);
 	switch(sub_hammdist)
 	{
@@ -143,7 +151,7 @@ void containers::prepare()
 							tmp4=0x0000000000000001<<d;
 							tmp=tmp1+tmp2+tmp3+tmp4;
 							tmpx=(uint32_t)tmp;
-							C_0_TO_subhammdis[0].push_back(tmpx);
+							C_0_TO_subhammdis.push_back(tmpx);
 						}
 					}
 				}
@@ -160,7 +168,7 @@ void containers::prepare()
 						tmp3=0x0000000000000001<<g;
 						tmp=tmp1+tmp2+tmp3;
 						tmpx=(uint32_t)tmp;
-						C_0_TO_subhammdis[0].push_back(tmpx);
+						C_0_TO_subhammdis.push_back(tmpx);
 					}
 				
 				}
@@ -174,7 +182,7 @@ void containers::prepare()
 					tmp2=0x0000000000000001<<j;
 					tmp=tmp1+tmp2;
 					tmpx=(uint32_t)tmp;
-					C_0_TO_subhammdis[0].push_back(tmpx);
+					C_0_TO_subhammdis.push_back(tmpx);
 				}
 			}
 		case 1:
@@ -182,11 +190,11 @@ void containers::prepare()
 			{
 				tmp=0x0000000000000001<<x;
 				tmpx=(uint32_t)tmp;
-				C_0_TO_subhammdis[0].push_back(tmpx);
+				C_0_TO_subhammdis.push_back(tmpx);
 			}
 		case 0:
 		{
-			C_0_TO_subhammdis[0].push_back(0);
+			C_0_TO_subhammdis.push_back(0);
 			break;
 		}
 		default:
@@ -288,7 +296,7 @@ void containers::get_test_pool()
 		uint64_t t=1;
 		unsigned char rand[3]={0};
 		sgx_read_rand(rand,2);
-		h=rand[0]%3;
+		// h=rand[0]%3;
 		for(int i=0;i<h;i++)
 		{
 	  		y=rand[i+1]%64;
@@ -332,116 +340,112 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	for(int i=0;i<4;i++){
 		ocall_get_timeNow(time);
 		begin_time=*time;
-		vector<uint32_t>* tmp_C_0_TO_subhammdis=&this->C_0_TO_subhammdis[1];
-		if(i==2)tmp_C_0_TO_subhammdis=&this->C_0_TO_subhammdis[0];
-	for(auto& its:*tmp_C_0_TO_subhammdis)
-	{
-		tmpsub1=sub[i]^its;
-	//	LOGGER("SUB FP INFO: %u %u %u %u",tmpsub1,tmpsub2,tmpsub3,tmpsub4);
-	//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
+		for(auto& its:C_0_TO_subhammdis[i])
+		{
+			tmpsub1=sub[i]^its;
+		//	LOGGER("SUB FP INFO: %u %u %u %u",tmpsub1,tmpsub2,tmpsub3,tmpsub4);
+		//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 
-		if(filters[i].contains(tmpsub1)){		
-		// if(sub_filters[i].contains(tmpsub1)){
-		auto it = sub_index[i].find(tmpsub1);times++;bloomHit++;
-		if(it!=sub_index[i].end())
-		{	
-			hitmap++;
-			// temp=it->second;
-			// for(auto& got:temp){
-			// candidate.insert(got);
-			// }
-			map2liner.push_back(it->second);
-			lru_index_visit(i,it->second);
-		// }else {
-		// 	 miss_sub.push_back(tmpsub1);
-		// 	bolomMiss++;}
-		}else{
-			// sub_information*its;
-			// for(its=sub_index_liner[i];its<sub_index_liner[i]+initialize_size,its++){
-			// 	if(its->sub_key==tmpsub1){
-			// 		++hitliner;
-			// 		lru_index_add(i,sub_index[i],its);
-			// 		break;
+			if(filters[i].contains(tmpsub1)){		
+			// if(sub_filters[i].contains(tmpsub1)){
+			auto it = sub_index[i].find(tmpsub1);times++;bloomHit++;
+			if(it!=sub_index[i].end())
+			{	
+				hitmap++;
+				// temp=it->second;
+				// for(auto& got:temp){
+				// candidate.insert(got);
+				// }
+				map2liner.push_back(it->second);
+				lru_index_visit(i,it->second);
+			// }else {
+			// 	 miss_sub.push_back(tmpsub1);
+			// 	bolomMiss++;}
+			}else{
+				// sub_information*its;
+				// for(its=sub_index_liner[i];its<sub_index_liner[i]+initialize_size,its++){
+				// 	if(its->sub_key==tmpsub1){
+				// 		++hitliner;
+				// 		lru_index_add(i,sub_index[i],its);
+				// 		break;
+				// 	}
+				// }
+				auto its = std::lower_bound(sub_index_liner[i], sub_index_liner[i]+initialize_size, tmpsub1,compareFirst);
+				if(its!=sub_index_liner[i]+initialize_size&&its->sub_key==tmpsub1){
+					++hitliner;
+					lru_index_add(i,sub_index[i],its);
+				}
+				miss_sub.push_back(its);
+				// miss_sub.push_back(tmpsub1);
+				bolomMiss++;}
+			}
+			// tmpsub2=sub[1]^its;
+			// if(filters[1].contains(tmpsub2)){
+			// auto it = sub_index2.find(tmpsub2);times++;bloomHit++;
+			// if(it!=sub_index2.end())
+			// {	
+			// 	temp=it->second;
+			// 	for(auto& got:temp){
+			// 	candidate.insert(got); 
 			// 	}
 			// }
-			auto its = std::lower_bound(sub_index_liner[i], sub_index_liner[i]+initialize_size, tmpsub1,compareFirst);
-			if(its!=sub_index_liner[i]+initialize_size&&its->sub_key==tmpsub1){
-				++hitliner;
-				lru_index_add(i,sub_index[i],its);
-			}
-			miss_sub.push_back(its);
-			// miss_sub.push_back(tmpsub1);
-			bolomMiss++;}
+			// }else bolomMiss++;
+			
+			// tmpsub3=sub[2]^its;
+			// if(filters[2].contains(tmpsub3)){
+			// auto it = sub_index3.find(tmpsub3);times++;bloomHit++;
+			// if(it!=sub_index3.end())
+			// {	
+			// 	temp=it->second;
+			// 	for(auto& got:temp){
+			// 	candidate.insert(got);
+			// 	}
+			// }
+			// }else bolomMiss++;
+			// tmpsub4=sub[3]^its;
+			// if(filters[3].contains(tmpsub4)){
+			// auto it = sub_index4.find(tmpsub4);times++;bloomHit++;
+			// if(it!=sub_index4.end())
+			// {	
+			// 	temp=it->second;times++;
+			// 	for(auto& got:temp){
+			// 	candidate.insert(got); 
+			// 	}
+			// }
+			// }else bolomMiss++;
 		}
-		// tmpsub2=sub[1]^its;
-		// if(filters[1].contains(tmpsub2)){
-		// auto it = sub_index2.find(tmpsub2);times++;bloomHit++;
-		// if(it!=sub_index2.end())
-		// {	
-		// 	temp=it->second;
-		// 	for(auto& got:temp){
-		// 	candidate.insert(got); 
-		// 	}
-		// }
-		// }else bolomMiss++;
-		
-		// tmpsub3=sub[2]^its;
-		// if(filters[2].contains(tmpsub3)){
-		// auto it = sub_index3.find(tmpsub3);times++;bloomHit++;
-		// if(it!=sub_index3.end())
-		// {	
-		// 	temp=it->second;
-		// 	for(auto& got:temp){
-		// 	candidate.insert(got);
-		// 	}
-		// }
-		// }else bolomMiss++;
-		// tmpsub4=sub[3]^its;
-		// if(filters[3].contains(tmpsub4)){
-		// auto it = sub_index4.find(tmpsub4);times++;bloomHit++;
-		// if(it!=sub_index4.end())
-		// {	
-		// 	temp=it->second;times++;
-		// 	for(auto& got:temp){
-		// 	candidate.insert(got); 
-		// 	}
-		// }
-		// }else bolomMiss++;
-	}
 		ocall_get_timeNow(time);
 		end_time=*time;
 		find_time+=end_time-begin_time;
-	ocall_get_timeNow(time);
-	begin_time=*time;
-	for(auto temp:map2liner){
-		uint32_t tempkey=temp->sub_key;num+=temp->sub_key;
-		auto its=temp->liner_node;num+=its->identifiers;
-		for(;its<sub_index_liner[i]+initialize_size&&its->sub_key==tempkey;++its){
-		candidate.emplace_hint(candidate.begin(),its->identifiers);
-		//  if(candidate.size()>400)candidate.clear();
-		num+=its->identifiers;mapsize++;
+		ocall_get_timeNow(time);
+		begin_time=*time;
+		for(auto temp:map2liner){
+			uint32_t tempkey=temp->sub_key;num+=temp->sub_key;
+			auto its=temp->liner_node;num+=its->identifiers;
+			for(;its<sub_index_liner[i]+initialize_size&&its->sub_key==tempkey;++its){
+			candidate.emplace_hint(candidate.begin(),its->identifiers);
+			num+=its->identifiers;mapsize++;
+			}
 		}
-	}
-	map2liner.clear();
-	for(int y=0;y<miss_sub.size();y+=1){//auto temp:miss_sub
-		auto its=miss_sub[y];
-		uint32_t temp=its->sub_key;
-		// auto temp=miss_sub[y];
-		// auto its = std::lower_bound(sub_index_liner[i], sub_index_liner[i]+initialize_size, temp,compareFirst);
-		// if(its!=sub_index_liner[i]+initialize_size&&its->sub_key==temp){
-		// 	++hitliner;
-		// 	lru_index_add(i,sub_index[i],its);
-		// }
-		for(;its<sub_index_liner[i]+initialize_size&&its->sub_key==temp;++its){
-		candidate.emplace_hint(candidate.begin(),its->identifiers);
-		//  if(candidate.size()>400)candidate.clear();
-		num+=its->identifiers;linersize++;
+		map2liner.clear();
+		for(int y=0;y<miss_sub.size();y+=1){//auto temp:miss_sub
+			auto its=miss_sub[y];
+			uint32_t temp=its->sub_key;
+			// auto temp=miss_sub[y];
+			// auto its = std::lower_bound(sub_index_liner[i], sub_index_liner[i]+initialize_size, temp,compareFirst);
+			// if(its!=sub_index_liner[i]+initialize_size&&its->sub_key==temp){
+			// 	++hitliner;
+			// 	lru_index_add(i,sub_index[i],its);
+			// }
+			for(;its<sub_index_liner[i]+initialize_size&&its->sub_key==temp;++its){
+			candidate.emplace_hint(candidate.begin(),its->identifiers);
+			num+=its->identifiers;linersize++;
+			}
 		}
-	}
-	miss_sub.clear();
-	ocall_get_timeNow(time);
-	end_time=*time;
-	insert_time+=end_time-begin_time;
+		miss_sub.clear();
+		ocall_get_timeNow(time);
+		end_time=*time;
+		insert_time+=end_time-begin_time;
 	}
 	// for(auto& its:this->C_0_TO_subhammdis[0])
 	// {
@@ -564,14 +568,30 @@ void containers::changeHammingDist(uint64_t hammdist)
 {
 	if(hammdist==this->hammdist)return;
 	this->hammdist=hammdist;
-	this->sub_hammdist=hammdist/4;
-	this->C_0_TO_subhammdis[0].clear();
-	this->prepare();
+	// this->sub_hammdist=hammdist/4;
+	for(int i=0;i<cont.sub_index_num;i++)sub_hammdist[i]=0;
+	for(int j=hammdist-sub_index_num+1;j>0;){//the sum of sub_hammdist is hammdist - sub_index_num + 1
+		for(int i=0;i<sub_index_num;i++)
+		{
+			if(j<=0)break;
+			sub_hammdist[i]++;
+			j--;
+		}
+	}
+	for(int i=0;i<cont.sub_index_num;i++)
+	{
+		cont.C_0_TO_subhammdis[i].clear();
+		cont.prepare(cont.sub_hammdist[i],cont.C_0_TO_subhammdis[i]);
+	}
+	// this->prepare();
 }
 void init()
 {
 	printf("run code!\n");
-	cont.prepare();
+	for(int i=0;i<cont.sub_index_num;i++)
+	{
+		cont.prepare(cont.sub_hammdist[i],cont.C_0_TO_subhammdis[i]);
+	}
 	printf("c_o size: %d\n",cont.C_0_TO_subhammdis[0].size());
 	printf("Init!\n");
 	cont.initialize();

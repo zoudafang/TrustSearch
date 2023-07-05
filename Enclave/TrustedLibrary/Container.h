@@ -70,7 +70,7 @@ public:
 	static uint64_t hammdist;
 	static uint64_t sub_index_num;
 	int sub_keybit;
-	uint64_t sub_hammdist;
+	uint64_t sub_hammdist[4];	//general pigeon principle，每段的汉明距离可能不相等，但总和为hammdist-subindex_num+1
 	static uint32_t initialize_size;
 	static uint32_t test_size;
 	static uint32_t sub_map_size;
@@ -88,14 +88,14 @@ public:
 	vector<information>full_index;
 	bloom_filter filters[4];bloom_filter sub_filters[4];
 	sub_index_node** sub_nodes;
-	vector<uint32_t>C_0_TO_subhammdis[2]; //用于与特征段做异或运算的所有数字的容器
+	vector<uint32_t>C_0_TO_subhammdis[4]; //用于与特征段做异或运算的所有数字的容器
 	set<pair<uint64_t,uint64_t>>test_pool;
 	containers();
 	void random_128(uint64_t *temp_key);
 	void get_sub_fingerprint(uint32_t *sub_fingerprint,uint64_t *fingerprint);
 	uint32_t random_uuid();
 	void get_test_pool();
-	void prepare();
+	void prepare(uint32_t sub_hammdist,vector<uint32_t>&C_0_TO_subhammdis);
 	void initialize();
 	void changeHammingDist(uint64_t hammingdist);
 	void init_after_recv_data();

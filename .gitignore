@@ -10,4 +10,4 @@ Enclave/*_t.h
 *.out
 img_code128*.bin
 .vscode/settings.json
-img_code512.bin
+img_code512*.bin
