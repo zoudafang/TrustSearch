@@ -77,8 +77,10 @@ containers::containers()
 			j--;
 		}
 	}
+	// int temp[]={2,2,2,2};
 	for(int i=0;i<sub_index_num;i++)
 	{
+		// sub_hammdist[i]=temp[i];
 		printf("sub_hammdist[%d]=%d\n",i,sub_hammdist[i]);
 	}
 }
@@ -296,7 +298,7 @@ void containers::get_test_pool()
 		uint64_t t=1;
 		unsigned char rand[3]={0};
 		sgx_read_rand(rand,2);
-		// h=rand[0]%3;
+		h=rand[0]%3;
 		for(int i=0;i<h;i++)
 		{
 	  		y=rand[i+1]%64;
@@ -503,6 +505,8 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	// }
 	uint64_t cmp_hamm[2]={0};
 	uint64_t count=0;
+	// static uint32_t candiNum=0;candiNum+=candidate.size();
+	// printf("candiNum:%d\n",candiNum);
 	// printf("times1:%d times2 %d\n",line_times,times);
 	// printf("bloomHit:%lu bloomMiss:%lu\n",bloomHit,bolomMiss);
 	// printf("num%d\n",num);
