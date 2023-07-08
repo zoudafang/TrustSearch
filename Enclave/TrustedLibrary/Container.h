@@ -109,4 +109,5 @@ public:
 	void insert_fingerprint(pair<uint64_t,uint64_t>* data,uint32_t length);
 	void insert_new_datamap(int sub_i);
 	void insert_to_submap(int sub_i,uint32_t sub_key,uint32_t identifier);
+	void change_sub_map(int sub_i);	//如果insert太多元素，需要动态调整map和linear的比例
 };

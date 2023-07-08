@@ -210,7 +210,7 @@ void containers::initialize()
 	information temp_information;
 	containers::initialize_size = DATA_LEN;
 	
-	full_index.reserve(initialize_size+100);
+	full_index.reserve(initialize_size+1000);
 	sub_index_liner=new vector<sub_information>[4];
 	// for(int i=0;i<4;i++)sub_index_liner[i]=new sub_information[initialize_size];
 	for(int i=0;i<4;i++)sub_index_liner[i].reserve(initialize_size);
@@ -343,7 +343,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 		//	LOGGER("SUB FP INFO: %u %u %u %u",tmpsub1,tmpsub2,tmpsub3,tmpsub4);
 		//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 
-			if(filters[i].contains(tmpsub1)){		
+			if(filters[i].contains(tmpsub1)){	
 			auto it = sub_index[i].find(tmpsub1);times++;bloomHit++;
 			if(it!=sub_index[i].end())
 			{	
@@ -510,16 +510,17 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 }
 void containers::test()
 {
-	// int insert_num=1000;
-	// pair<uint64_t, uint64_t>* tempPair = new pair<uint64_t, uint64_t>[insert_num];
-	// for(int i=0;i<insert_num;i++)tempPair[i] = make_pair(full_index[3000+i].fullkey[0], full_index[3000+i].fullkey[1]);
-	// insert_fingerprint(tempPair,insert_num);
+	int insert_num=5000;
+	pair<uint64_t, uint64_t>* tempPair = new pair<uint64_t, uint64_t>[insert_num];
+	for(int i=0;i<insert_num;i++)tempPair[i] = make_pair(full_index[3000+i].fullkey[0], full_index[3000+i].fullkey[1]);
+	insert_fingerprint(tempPair,insert_num);
 	// int insert_num=1;
 	// pair<uint64_t, uint64_t> tempPair(full_index[0].fullkey[0],full_index[0].fullkey[1]);
 	// insert_fingerprint(&tempPair,insert_num);
 	printf("Test!\n");
 	uint64_t temp_key[2]={0};
-	for(int i=0;i<4;i++)this->insert_new_datamap(i);
+	// for(int i=0;i<4;i++)this->insert_new_datamap(i);
+
 	for(auto &itx : test_pool)
 	{
 		temp_key[0]=itx.first;
@@ -747,16 +748,18 @@ void containers::lru_index_add(int sub_i,vector<sub_information>::iterator node_
 	//if the size of the index list is larger than the max size,remove the first node
 	sub_index_node* remove_node=nullptr;
 	if(lru_n[sub_i].index_size>=lru_n[sub_i].map_size){
-		remove_node=lru_n[sub_i].index_head->next;
-		sub_index_node* first=remove_node->next;
-		lru_n[sub_i].index_head->next=first;
-		first->pre=lru_n[sub_i].index_head;
-		if(sub_index[sub_i][remove_node->sub_key]->pre == lru_n[sub_i].index_head)sub_index[sub_i].erase(remove_node->sub_key);
-		remove_node->pre=nullptr;remove_node->next=nullptr;
+		remove_node = lru_n[sub_i].index_head->next;
+		sub_index_node* first = remove_node->next;
+		lru_n[sub_i].index_head->next = first;
+		first->pre = lru_n[sub_i].index_head;
+		auto tmp=sub_index[sub_i].find(remove_node->sub_key);
+		if(tmp!=sub_index[sub_i].end()&&tmp->second->pre == lru_n[sub_i].index_head)sub_index[sub_i].erase(remove_node->sub_key);
+		remove_node->pre = nullptr;remove_node->next=nullptr;
+
 		//if the new data is in the removed list,add it to the linear list
-		remove_node->pre=lru_n[sub_i].index_tail;
-		lru_n[sub_i].index_tail->next=remove_node;
-		lru_n[sub_i].index_tail=remove_node;
+		remove_node->pre = lru_n[sub_i].index_tail;
+		lru_n[sub_i].index_tail->next = remove_node;
+		lru_n[sub_i].index_tail = remove_node;
 		//delete remove_node;
 	}else{lru_n[sub_i].index_size++;}
 
@@ -802,14 +805,17 @@ void containers::insert_new_datamap(int sub_i){
 		}
 		sub_index_node* tmp = node;
 		node = node->next;
-		// delete tmp;
+		sub_index[sub_i].erase(tmp->sub_key);
+		delete tmp;
 	}
+
 	//insert to linear list
 	std::sort(tmp_sub_vector.begin(),tmp_sub_vector.end(),customCompare);
 	sub_index_liner[sub_i].reserve(sub_index_liner[sub_i].size()+(tmp_sub_vector.size()<1000?1000:tmp_sub_vector.size()));
 	sub_index_liner[sub_i].insert(sub_index_liner[sub_i].end(), tmp_sub_vector.begin(), tmp_sub_vector.end());
 	std::inplace_merge(sub_index_liner[sub_i].begin(), sub_index_liner[sub_i].end()-tmp_sub_vector.size(), sub_index_liner[sub_i].end(), customCompare);
 	initialize_size+=tmp_sub_vector.size();
+	change_sub_map(sub_i);
 };
 void containers::insert_to_submap(int sub_i,uint32_t sub_key,uint32_t identifier){
 	auto sub_node = sub_index[sub_i].find(sub_key);
@@ -834,6 +840,7 @@ void containers::insert_to_submap(int sub_i,uint32_t sub_key,uint32_t identifier
 		//move the useless node to the head of the LRU list
 		node->pre->next = node->next;
 		node->next->pre = node->pre;
+		if(node == lru_n[sub_i].index_tail) lru_n[sub_i].index_tail = node->pre;
 		node->next = lru_n[sub_i].index_head->next;
 		node->pre = lru_n[sub_i].index_head;
 		lru_n[sub_i].index_head->next->pre = node;
@@ -848,8 +855,35 @@ void containers::insert_to_submap(int sub_i,uint32_t sub_key,uint32_t identifier
 	for(;node_liner != sub_index_liner[sub_i].end()&&node_liner->sub_key == node->sub_key;node_liner++){
 		node->identifiers.push_back(node_liner->identifiers);
 	}
+
 	node->identifiers.push_back(identifier);
 	sub_index[sub_i][sub_key] = node;
 	node->next = new_data_head[sub_i]->next;
 	new_data_head[sub_i]->next = node;
 };
+//if insert too many data, increase the size of the submap
+void containers::change_sub_map(int sub_i){
+	uint32_t new_sub_map_size = initialize_size/2000;
+	sub_information sub_info;
+	if(new_sub_map_size-sub_map_size > sub_map_size/10){
+		sub_index_node* new_sub_nodes;
+		lru_n[sub_i].index_head->next=nullptr;
+		new_sub_nodes = new sub_index_node[new_sub_map_size];
+		int j = 0;
+		sub_index_node* pre=lru_n[sub_i].index_head;
+		for(auto& val:sub_index[sub_i]){
+			new_sub_nodes[j].sub_key = val.first;
+			new_sub_nodes[j].identifiers = std::move(val.second->identifiers);
+			new_sub_nodes[j].pre = pre;
+			pre->next = &new_sub_nodes[j];
+			pre = &new_sub_nodes[j];
+			sub_index[sub_i][val.first] = &new_sub_nodes[j];
+			// delete val.second;
+			j++;
+		}
+		delete[] sub_nodes[sub_i];
+		pre->next = nullptr;
+		lru_n[sub_i].index_tail = pre;
+		sub_nodes[sub_i] = new_sub_nodes;
+	}
+}
