@@ -51,7 +51,7 @@ struct sub_information
 
 typedef struct sub_index_node{
 	uint32_t sub_key;
-	sub_information* liner_node;
+	vector<uint32_t> identifiers;
 	sub_index_node* next;
 	sub_index_node* pre;
 }sub_index_node;
@@ -84,12 +84,15 @@ public:
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index2;
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index3;
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index4;
-	sub_information** sub_index_liner;
+	vector<sub_information>* sub_index_liner;
 	vector<information>full_index;
-	bloom_filter filters[4];bloom_filter sub_filters[4];
+	bloom_filter filters[4];
 	sub_index_node** sub_nodes;
 	vector<uint32_t>C_0_TO_subhammdis[4]; //用于与特征段做异或运算的所有数字的容器
 	set<pair<uint64_t,uint64_t>>test_pool;
+	lru_node lru_n[4];	//sub_index的lru结构，包括map大小，lru的head,head包括一个空的头节点
+	sub_index_node* new_data_head[4];	//新insert的数据形成链表，head记录头部
+	// unordered_map<uint32_t,uint32_t> insert_data[4]; //记录插入的新数据的位置
 	containers();
 	void random_128(uint64_t *temp_key);
 	void get_sub_fingerprint(uint32_t *sub_fingerprint,uint64_t *fingerprint);
@@ -101,7 +104,9 @@ public:
 	void init_after_recv_data();
 	std::unordered_set<uint32_t> find_sim(uint64_t query[]);
 	void test();
+	void lru_index_visit(int sub_i,sub_index_node* node);	//sub_i is the index of sub_index
+	void lru_index_add(int sub_i,vector<sub_information>::iterator node_liner,vector<sub_information>& sub_linear);
+	void insert_fingerprint(pair<uint64_t,uint64_t>* data,uint32_t length);
+	void insert_new_datamap(int sub_i);
+	void insert_to_submap(int sub_i,uint32_t sub_key,uint32_t identifier);
 };
-
-void lru_index_visit(int sub_i,sub_index_node* node);
-void lru_index_add(int sub_i,unordered_map<uint32_t,sub_index_node*>& sub_index,sub_information* node_liner);

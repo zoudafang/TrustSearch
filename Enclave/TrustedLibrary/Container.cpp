@@ -58,7 +58,6 @@ namespace{
 	containers cont;
 	std::vector<std::pair<uint64_t,uint64_t>> sign_data;
 	std::vector<uint32_t> targets_data;
-	lru_node lru_n[4];
 	static long long total_time=0;
 	static long long find_time=0;
 	static long long insert_time=0;
@@ -211,9 +210,10 @@ void containers::initialize()
 	information temp_information;
 	containers::initialize_size = DATA_LEN;
 	
-	full_index.reserve(initialize_size);
-	sub_index_liner=new sub_information*[4];
-	for(int i=0;i<4;i++)sub_index_liner[i]=new sub_information[initialize_size];
+	full_index.reserve(initialize_size+100);
+	sub_index_liner=new vector<sub_information>[4];
+	// for(int i=0;i<4;i++)sub_index_liner[i]=new sub_information[initialize_size];
+	for(int i=0;i<4;i++)sub_index_liner[i].reserve(initialize_size);
 
 	containers::sub_map_size = initialize_size/2000;//initialize_size//1500,2500,1000
 	for(int i=0;i<4;i++){
@@ -221,7 +221,8 @@ void containers::initialize()
 	sub_index_node* head1=new sub_index_node;
 	lru_n[i].index_head=head1;
 	lru_n[i].index_tail=head1;
-	sub_index_node node_temp{0,nullptr,nullptr,nullptr};
+	sub_index_node node_temp{0,vector<uint32_t>(),nullptr,nullptr};
+	new_data_head[i] = new sub_index_node{0,vector<uint32_t>(),nullptr,nullptr};
 	}
 
 	sub_information sub_info[4];
@@ -231,23 +232,17 @@ void containers::initialize()
     parameters.compute_optimal_parameters(); // 计算最优参数
 	parameters.random_seed=0xA5A5A5A5;
 	for(int i=0;i<4;i++)filters[i]=bloom_filter(parameters);
-	bloom_parameters sub_parameters;
-    sub_parameters.projected_element_count = initialize_size; // 预计插入initialize_size个元素
-    sub_parameters.false_positive_probability = 0.01; // 期望的误判率为0.1
-    sub_parameters.compute_optimal_parameters(); // 计算最优参数
-	sub_parameters.random_seed=0xA5A5A5A5;
-	for(int i=0;i<4;i++)sub_filters[i]=bloom_filter(sub_parameters);
 	return;
 }
 void containers::init_after_recv_data(){
 	for(int i=0;i<4;i++){
-		std::sort(sub_index_liner[i],sub_index_liner[i]+initialize_size,customCompare);
+		std::sort(sub_index_liner[i].begin(),sub_index_liner[i].end(),customCompare);
 	}
 	int j[4]={0};
 	//for(int i=0;i<4;i++)j[i]=sub_index_liner[i][0];
 	printf("subsize:%d\n",sub_map_size);
 	sub_nodes=new sub_index_node*[4];
-	for(int i=0;i<4;i++)sub_nodes[i]=new sub_index_node[sub_map_size];
+	for(int i=0;i<4;i++){sub_nodes[i]=new sub_index_node[sub_map_size];}
 	for(int k=0;k<4;k++){
 		for(int i=0;sub_index[k].size()<sub_map_size&&i<sub_map_size*2;i++)//sub_index[k].size()
 		{
@@ -255,8 +250,8 @@ void containers::init_after_recv_data(){
 		j[k]=j[k]%initialize_size;
 		uint32_t temp=sub_index_liner[k][j[k]].sub_key;
 		for(;j[k]>0&&temp==sub_index_liner[k][j[k]-1].sub_key;j[k]--);
-		auto its=&sub_index_liner[k][j[k]];
-		if(sub_index[k].find(temp)==sub_index[k].end())lru_index_add(k,sub_index[k],&sub_index_liner[k][j[k]]);//int temps=j[k];
+		auto its=sub_index_liner[k].begin()+j[k];
+		if(sub_index[k].find(temp)==sub_index[k].end())lru_index_add(k,its,sub_index_liner[k]);//int temps=j[k];
 		// for(;its->sub_key==temp&&its<sub_index_liner[k]+initialize_size;its++,j[k]++);
 		}
 	}
@@ -333,7 +328,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	unordered_map<uint32_t, std::vector<uint32_t>>::iterator got;
 	vector<sub_index_node*> map2liner;
 	// vector<uint32_t> miss_sub;
-	vector<sub_information*> miss_sub;
+	vector<vector<sub_information>::iterator> miss_sub;
 	static int num=0;
 	static int hitmap=0;static int hitliner=0;
 	static int mapsize=0;static int linersize=0;
@@ -349,7 +344,6 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 		//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 
 			if(filters[i].contains(tmpsub1)){		
-			// if(sub_filters[i].contains(tmpsub1)){
 			auto it = sub_index[i].find(tmpsub1);times++;bloomHit++;
 			if(it!=sub_index[i].end())
 			{	
@@ -360,9 +354,6 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 				// }
 				map2liner.push_back(it->second);
 				lru_index_visit(i,it->second);
-			// }else {
-			// 	 miss_sub.push_back(tmpsub1);
-			// 	bolomMiss++;}
 			}else{
 				// sub_information*its;
 				// for(its=sub_index_liner[i];its<sub_index_liner[i]+initialize_size,its++){
@@ -372,49 +363,15 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 				// 		break;
 				// 	}
 				// }
-				auto its = std::lower_bound(sub_index_liner[i], sub_index_liner[i]+initialize_size, tmpsub1,compareFirst);
-				if(its!=sub_index_liner[i]+initialize_size&&its->sub_key==tmpsub1){
+				auto its = std::lower_bound(sub_index_liner[i].begin(),sub_index_liner[i].end(), tmpsub1,compareFirst);
+				if(its!=sub_index_liner[i].end()&&its->sub_key==tmpsub1){
 					++hitliner;
-					lru_index_add(i,sub_index[i],its);
+					lru_index_add(i,its,sub_index_liner[i]);
+					miss_sub.push_back(its);
 				}
-				miss_sub.push_back(its);
 				// miss_sub.push_back(tmpsub1);
 				bolomMiss++;}
 			}
-			// tmpsub2=sub[1]^its;
-			// if(filters[1].contains(tmpsub2)){
-			// auto it = sub_index2.find(tmpsub2);times++;bloomHit++;
-			// if(it!=sub_index2.end())
-			// {	
-			// 	temp=it->second;
-			// 	for(auto& got:temp){
-			// 	candidate.insert(got); 
-			// 	}
-			// }
-			// }else bolomMiss++;
-			
-			// tmpsub3=sub[2]^its;
-			// if(filters[2].contains(tmpsub3)){
-			// auto it = sub_index3.find(tmpsub3);times++;bloomHit++;
-			// if(it!=sub_index3.end())
-			// {	
-			// 	temp=it->second;
-			// 	for(auto& got:temp){
-			// 	candidate.insert(got);
-			// 	}
-			// }
-			// }else bolomMiss++;
-			// tmpsub4=sub[3]^its;
-			// if(filters[3].contains(tmpsub4)){
-			// auto it = sub_index4.find(tmpsub4);times++;bloomHit++;
-			// if(it!=sub_index4.end())
-			// {	
-			// 	temp=it->second;times++;
-			// 	for(auto& got:temp){
-			// 	candidate.insert(got); 
-			// 	}
-			// }
-			// }else bolomMiss++;
 		}
 		ocall_get_timeNow(time);
 		end_time=*time;
@@ -423,10 +380,9 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 		begin_time=*time;
 		for(auto temp:map2liner){
 			uint32_t tempkey=temp->sub_key;num+=temp->sub_key;
-			auto its=temp->liner_node;num+=its->identifiers;
-			for(;its<sub_index_liner[i]+initialize_size&&its->sub_key==tempkey;++its){
-			candidate.emplace_hint(candidate.begin(),its->identifiers);
-			num+=its->identifiers;mapsize++;
+			// auto its=temp->liner_node;num+=its->identifiers;
+			for(auto& its:temp->identifiers){
+			candidate.emplace_hint(candidate.begin(),its);
 			}
 		}
 		map2liner.clear();
@@ -439,7 +395,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 			// 	++hitliner;
 			// 	lru_index_add(i,sub_index[i],its);
 			// }
-			for(;its<sub_index_liner[i]+initialize_size&&its->sub_key==temp;++its){
+			for(;its<sub_index_liner[i].end()&&its->sub_key==temp;++its){
 			candidate.emplace_hint(candidate.begin(),its->identifiers);
 			num+=its->identifiers;linersize++;
 			}
@@ -517,7 +473,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	ocall_get_timeNow(time);
 	begin_time=*time;
 	information got_out;
-	// tsl::hopscotch_map<uint32_t,information>::const_iterator got_out;
+	// tsl::hopscotch_map<uint32_t,information>::const_iterat/or got_out;
 	for(auto it = candidate.begin(); it != candidate.end();)
 	{
 		got_out=full_index[*it];
@@ -554,8 +510,16 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 }
 void containers::test()
 {
+	// int insert_num=1000;
+	// pair<uint64_t, uint64_t>* tempPair = new pair<uint64_t, uint64_t>[insert_num];
+	// for(int i=0;i<insert_num;i++)tempPair[i] = make_pair(full_index[3000+i].fullkey[0], full_index[3000+i].fullkey[1]);
+	// insert_fingerprint(tempPair,insert_num);
+	// int insert_num=1;
+	// pair<uint64_t, uint64_t> tempPair(full_index[0].fullkey[0],full_index[0].fullkey[1]);
+	// insert_fingerprint(&tempPair,insert_num);
 	printf("Test!\n");
 	uint64_t temp_key[2]={0};
+	for(int i=0;i<4;i++)this->insert_new_datamap(i);
 	for(auto &itx : test_pool)
 	{
 		temp_key[0]=itx.first;
@@ -589,6 +553,59 @@ void containers::changeHammingDist(uint64_t hammdist)
 	}
 	// this->prepare();
 }
+void containers::insert_fingerprint(pair<uint64_t,uint64_t>* data,uint32_t length){
+	uint64_t temp_key[2]={0};
+	uint32_t out_id=0;
+	uint32_t sub[4]={0};
+	information temp_information;
+	sub_information sub_info[4];
+	if(length>sub_map_size*5){
+		vector<sub_information> tmp_sub_vector[4] ;
+		for(int i=0;i<4;i++)tmp_sub_vector[i].reserve(length);
+		for(int i=0;i<length;i++)
+		{
+			temp_information.fullkey[0]=data[i].first;//temp_key[0];
+			temp_information.fullkey[1]=data[i].second;//temp_key[1];
+			temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
+			get_sub_fingerprint(sub,temp_key);
+			out_id=random_uuid()-1;
+			for(int j=0;j<4;j++){
+				filters[j].insert(sub[j]);
+				sub_info[j].sub_key=sub[j];
+				sub_info[j].identifiers=out_id;
+				tmp_sub_vector[j].push_back(sub_info[j]);
+				if(sub_index[j].find(sub[j])!=sub_index[j].end()){
+					sub_index[j][sub[j]]->identifiers.push_back(out_id);
+				}
+			}
+			full_index.push_back(temp_information);
+		}
+
+		//sort and merge new elements
+		for(int j=0;j<4;j++){
+			std::sort(tmp_sub_vector[j].begin(),tmp_sub_vector[j].end(),customCompare);
+			sub_index_liner[j].reserve(sub_index_liner[j].size()+(length<1000?1000:length));
+			sub_index_liner[j].insert(sub_index_liner[j].end(), tmp_sub_vector[j].begin(), tmp_sub_vector[j].end());
+			// std::merge(cont.sub_index_liner[j].begin(),cont.sub_index_liner[j].end(),tmp_sub_vector[j].begin(),tmp_sub_vector[j].end(),std::back_inserter(cont.sub_index_liner[j]),customCompare);
+			std::inplace_merge(sub_index_liner[j].begin(), sub_index_liner[j].end()-tmp_sub_vector[j].size(), sub_index_liner[j].end(), customCompare);
+			initialize_size+=tmp_sub_vector[j].size();
+		}
+	}else{
+		for(int i=0;i<length;i++)
+		{
+			temp_information.fullkey[0]=data[i].first;//temp_key[0];
+			temp_information.fullkey[1]=data[i].second;//temp_key[1];
+			temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
+			get_sub_fingerprint(sub,temp_key);
+			out_id=random_uuid()-1;
+			for(int j=0;j<4;j++){
+				filters[j].insert(sub[j]);
+				insert_to_submap(j,sub[j],out_id);
+			}
+			full_index.push_back(temp_information);
+		}
+	}
+}
 void init()
 {
 	printf("run code!\n");
@@ -617,6 +634,7 @@ void init_after_send(){
 
 void encall_send_data(void *dataptr,size_t len)
 {
+	// printf("The full index entry is: %d \n",cont.test_pool.size()-1);
 	std::pair<uint64_t, uint64_t>* data =  reinterpret_cast<std::pair<uint64_t, uint64_t>*>(dataptr);
 	// sign_data.insert(sign_data.end(),data,data+len);
 	uint64_t temp_key[2]={0};
@@ -635,10 +653,11 @@ void encall_send_data(void *dataptr,size_t len)
 			cont.filters[j].insert(sub[j]);
 			sub_info[j].sub_key=sub[j];
 			sub_info[j].identifiers=out_id;
-			cont.sub_index_liner[j][out_id]=sub_info[j];
+			cont.sub_index_liner[j].push_back(sub_info[j]);
 		}
 		cont.full_index.push_back(temp_information);
 	}
+	// printf("The full index entry is: %d \n",cont.test_pool.size()-10);
 }
 void encall_send_targets(void *dataptr,size_t len)
 {
@@ -713,7 +732,8 @@ void encall_find_batch(void *dataptr,uint32_t* res,uint32_t len,uint32_t len_res
 	printf("%d",sign_data.size());
 }
 //move the visited node to the tail of the list
-void lru_index_visit(int sub_i,sub_index_node* node){
+void containers::lru_index_visit(int sub_i,sub_index_node* node){
+	if(node->pre==nullptr||node->pre==new_data_head[sub_i])return;
 	if(node==lru_n[sub_i].index_tail)return;
 	//move the node to the tail of the index list
 	node->next->pre=node->pre;
@@ -723,7 +743,7 @@ void lru_index_visit(int sub_i,sub_index_node* node){
 	lru_n[sub_i].index_tail=node;
 };
 //add the node to the tail of the list
-void lru_index_add(int sub_i,unordered_map<uint32_t,sub_index_node*>& sub_index,sub_information* node_liner){
+void containers::lru_index_add(int sub_i,vector<sub_information>::iterator node_liner,vector<sub_information>& sub_linear){
 	//if the size of the index list is larger than the max size,remove the first node
 	sub_index_node* remove_node=nullptr;
 	if(lru_n[sub_i].index_size>=lru_n[sub_i].map_size){
@@ -731,8 +751,12 @@ void lru_index_add(int sub_i,unordered_map<uint32_t,sub_index_node*>& sub_index,
 		sub_index_node* first=remove_node->next;
 		lru_n[sub_i].index_head->next=first;
 		first->pre=lru_n[sub_i].index_head;
+		if(sub_index[sub_i][remove_node->sub_key]->pre == lru_n[sub_i].index_head)sub_index[sub_i].erase(remove_node->sub_key);
 		remove_node->pre=nullptr;remove_node->next=nullptr;
-		sub_index.erase(remove_node->sub_key);
+		//if the new data is in the removed list,add it to the linear list
+		remove_node->pre=lru_n[sub_i].index_tail;
+		lru_n[sub_i].index_tail->next=remove_node;
+		lru_n[sub_i].index_tail=remove_node;
 		//delete remove_node;
 	}else{lru_n[sub_i].index_size++;}
 
@@ -741,12 +765,91 @@ void lru_index_add(int sub_i,unordered_map<uint32_t,sub_index_node*>& sub_index,
 	if(remove_node==nullptr) node=&cont.sub_nodes[sub_i][lru_n[sub_i].index_size-1];//new sub_index_node{node_liner->sub_key,node_liner,nullptr,nullptr};
 	else node=remove_node;
 	node->sub_key=node_liner->sub_key;
-	node->liner_node=node_liner;
+	// node->liner_node=node_liner;
+	node->identifiers.clear();
+	for(;node_liner!=sub_linear.end()&&node_liner->sub_key==node->sub_key;node_liner++){
+		node->identifiers.push_back(node_liner->identifiers);
+	}
+	// node->identifiers.shrink_to_fit();
 	node->next=nullptr;node->pre=nullptr;
 	// cont.sub_filters[sub_i].insert(node_liner->sub_key);
-	sub_index[node->sub_key]=node;
+	sub_index[sub_i][node->sub_key]=node;
 	sub_index_node* temp=node;//sub_index[node_liner->sub_info.sub_key];
 	lru_n[sub_i].index_tail->next=temp;
 	temp->pre=lru_n[sub_i].index_tail;
 	lru_n[sub_i].index_tail=temp;
+};
+void containers::insert_new_datamap(int sub_i){
+	vector<sub_information> tmp_sub_vector;
+	sub_information sub_info;
+	sub_index_node* node = new_data_head[sub_i]->next;
+	new_data_head[sub_i]->next = nullptr;
+	while(node != nullptr){
+		if(node->pre == new_data_head[sub_i]){
+			for(auto &it:node->identifiers){
+				sub_info.sub_key=node->sub_key;
+				sub_info.identifiers=it;
+				tmp_sub_vector.push_back(sub_info);
+			}
+		}else{
+			for(auto &it:node->identifiers){
+				sub_info.sub_key=node->sub_key;
+				sub_info.identifiers=it;
+				auto is_exists = std::lower_bound(sub_index_liner[sub_i].begin(),sub_index_liner[sub_i].end() , sub_info, customCompare);
+				//insert the un-exists data to the linear list
+				if(is_exists == sub_index_liner[sub_i].end()||is_exists->sub_key!=sub_info.sub_key)tmp_sub_vector.push_back(sub_info);
+			}
+		}
+		sub_index_node* tmp = node;
+		node = node->next;
+		// delete tmp;
+	}
+	//insert to linear list
+	std::sort(tmp_sub_vector.begin(),tmp_sub_vector.end(),customCompare);
+	sub_index_liner[sub_i].reserve(sub_index_liner[sub_i].size()+(tmp_sub_vector.size()<1000?1000:tmp_sub_vector.size()));
+	sub_index_liner[sub_i].insert(sub_index_liner[sub_i].end(), tmp_sub_vector.begin(), tmp_sub_vector.end());
+	std::inplace_merge(sub_index_liner[sub_i].begin(), sub_index_liner[sub_i].end()-tmp_sub_vector.size(), sub_index_liner[sub_i].end(), customCompare);
+	initialize_size+=tmp_sub_vector.size();
+};
+void containers::insert_to_submap(int sub_i,uint32_t sub_key,uint32_t identifier){
+	auto sub_node = sub_index[sub_i].find(sub_key);
+	if(sub_node != sub_index[sub_i].end()){
+		if(sub_node->second->pre==nullptr||sub_node->second->pre==new_data_head[sub_i]){
+			sub_node->second->identifiers.push_back(identifier);
+			return;
+		}
+		sub_index_node* tmp = new sub_index_node{sub_key,vector<uint32_t>(),nullptr,nullptr};
+		tmp->next = new_data_head[sub_i]->next;
+		new_data_head[sub_i]->next = tmp;
+		tmp->identifiers.push_back(identifier);
+		for(auto &it:sub_node->second->identifiers){
+			tmp->identifiers.push_back(it);
+		}
+		tmp->identifiers.shrink_to_fit();
+		auto node = sub_node->second;
+		sub_index[sub_i][sub_key] = tmp;
+		// sub_node->second->identifiers.clear();
+		// sub_node->second->identifiers.shrink_to_fit();
+
+		//move the useless node to the head of the LRU list
+		node->pre->next = node->next;
+		node->next->pre = node->pre;
+		node->next = lru_n[sub_i].index_head->next;
+		node->pre = lru_n[sub_i].index_head;
+		lru_n[sub_i].index_head->next->pre = node;
+		lru_n[sub_i].index_head->next = node;
+		return;
+	}
+
+	//add node to the new_data_list
+	sub_index_node* node = new sub_index_node{sub_key,vector<uint32_t>(),nullptr,nullptr};
+	auto node_liner = std::lower_bound(sub_index_liner[sub_i].begin(),sub_index_liner[sub_i].end(), sub_key,compareFirst);
+	if(node_liner == sub_index_liner[sub_i].end()) node->pre = new_data_head[sub_i]; //this is a new sub_key in the data_set
+	for(;node_liner != sub_index_liner[sub_i].end()&&node_liner->sub_key == node->sub_key;node_liner++){
+		node->identifiers.push_back(node_liner->identifiers);
+	}
+	node->identifiers.push_back(identifier);
+	sub_index[sub_i][sub_key] = node;
+	node->next = new_data_head[sub_i]->next;
+	new_data_head[sub_i]->next = node;
 };
