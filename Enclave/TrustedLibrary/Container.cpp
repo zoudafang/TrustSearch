@@ -252,7 +252,7 @@ void containers::init_after_recv_data(){
 		for(;j[k]>0&&temp==sub_index_liner[k][j[k]-1].sub_key;j[k]--);
 		auto its=sub_index_liner[k].begin()+j[k];
 		if(sub_index[k].find(temp)==sub_index[k].end())lru_index_add(k,its,sub_index_liner[k]);//int temps=j[k];
-		// for(;its->sub_key==temp&&its<sub_index_liner[k]+initialize_size;its++,j[k]++);
+		// for(;its->sub_key==temp&&its<sub_index_liner[k].end;its++,j[k]++);
 		}
 	}
 	//printf sub_index size
@@ -602,6 +602,14 @@ void containers::insert_fingerprint(pair<uint64_t,uint64_t>* data,uint32_t lengt
 			for(int j=0;j<4;j++){
 				filters[j].insert(sub[j]);
 				insert_to_submap(j,sub[j],out_id);
+				
+				//直接插入sub-index，测试纯hashmap的insert时间
+				// if(sub_index[j].find(sub[j])!=sub_index[j].end())sub_index[j][sub[j]]->identifiers.push_back(out_id);
+				// else {
+				// 	sub_index_node* temp_node=new sub_index_node;
+				// 	sub_index[j][sub[j]]=temp_node;
+				// 	temp_node->identifiers.push_back(out_id);
+				// }
 			}
 			full_index.push_back(temp_information);
 		}
