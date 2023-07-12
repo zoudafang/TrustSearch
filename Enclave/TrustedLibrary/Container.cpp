@@ -134,7 +134,6 @@ void containers::prepare(uint32_t sub_hammdist,vector<uint32_t>&C_0_TO_subhammdi
 	int tmp1,tmp2,tmp3,tmp4=1;
 	int tmp=0;
 	uint32_t tmpx=0;
-	this->C_0_TO_subhammdis[1].push_back(0);
 	switch(sub_hammdist)
 	{
 		case 4:
@@ -510,10 +509,12 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 }
 void containers::test()
 {
-	int insert_num=5000;
-	pair<uint64_t, uint64_t>* tempPair = new pair<uint64_t, uint64_t>[insert_num];
-	for(int i=0;i<insert_num;i++)tempPair[i] = make_pair(full_index[3000+i].fullkey[0], full_index[3000+i].fullkey[1]);
-	insert_fingerprint(tempPair,insert_num);
+	//------------test insert and query----------
+	// int insert_num=5000;
+	// pair<uint64_t, uint64_t>* tempPair = new pair<uint64_t, uint64_t>[insert_num];
+	// for(int i=0;i<insert_num;i++)tempPair[i] = make_pair(full_index[3000+i].fullkey[0], full_index[3000+i].fullkey[1]);
+	// insert_fingerprint(tempPair,insert_num);
+
 	// int insert_num=1;
 	// pair<uint64_t, uint64_t> tempPair(full_index[0].fullkey[0],full_index[0].fullkey[1]);
 	// insert_fingerprint(&tempPair,insert_num);
