@@ -274,12 +274,13 @@ Enclave/Enclave_t.o: Enclave/Enclave_t.c
 
 Enclave/%.o: Enclave/%.cpp
 	@$(CXX) $(SGX_COMMON_CXXFLAGS) $(Enclave_Cpp_Flags) $(Include_Paths_Enclave)  -c $< -o $@
+	@$(CC) $(CFLAGS) -c Enclave/TrustedLibrary/libfor/for.c -o Enclave/TrustedLibrary/libfor/for.o
 	@echo "CXX  <=  $<"
 
 $(Enclave_Cpp_Objects): Enclave/Enclave_t.h
 
 $(Enclave_Name): Enclave/Enclave_t.o $(Enclave_Cpp_Objects)
-	@$(CXX) $^ -o $@ -L/opt/intel/sgxssl/include -L/opt/intel/sgxssl/lib64 $(Enclave_Link_Flags)
+	@$(CXX) $^ -o $@ -L/opt/intel/sgxssl/include -L/opt/intel/sgxssl/lib64 $(Enclave_Link_Flags)  Enclave/TrustedLibrary/libfor/for.o
 	@echo "LINK =>  $@"
 
 $(Signed_Enclave_Name): $(Enclave_Name)

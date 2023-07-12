@@ -10,9 +10,7 @@ Enclave/*_t.h
 *.out
 img_code128.bin
 .vscode/settings.json
-img_code128_25.bin
-img_code128_100k.bin
-img_code128_200k.bin
-img_code128.bin
-img_code128_50.bin
+img_code*.bin
 .vscode/settings.json
+img_code512.bin
+output.txt

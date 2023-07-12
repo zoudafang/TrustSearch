@@ -213,7 +213,7 @@ int SGX_CDECL main(int argc, char *argv[])
 
     std::vector<std::pair<u_int64_t, u_int64_t>> res;
     std::vector<uint32_t> targets;
-    read_data("img_code128.bin",res,targets);
+    read_data("img_code512.bin",res,targets);
     
     uint64_t* testFull=new uint64_t[2];
     testFull[0]=res[2].first;testFull[1]=res[2].second;
@@ -271,3 +271,20 @@ void start_server(){
     return ;
 }
 
+void write_dimension(void *data){
+    uint32_t* dimension=(uint32_t*)data;
+     std::ofstream outputFile("output.txt");  // 打开输出文件
+
+    if (outputFile.is_open()) {
+
+        for (int i=0;i<128;i++) {
+            outputFile << dimension[i] << std::endl;  // 将每个元素写入文件，每个元素占据一行
+        }
+
+        outputFile.close();  // 关闭文件
+        std::cout << "写入成功" << std::endl;
+    } else {
+        std::cout << "无法打开文件" << std::endl;
+    }
+    return;
+}

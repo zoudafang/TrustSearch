@@ -51,6 +51,7 @@ enclave {
      */
     untrusted {
         void ocall_print_string([in, string] const char *str);
+        void write_dimension([in,count=128,size=4]void *data);
     };
 
 };

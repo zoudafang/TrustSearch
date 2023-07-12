@@ -39,6 +39,7 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <fstream>
 #include "sgx_error.h"       /* sgx_status_t */
 #include "sgx_eid.h"     /* sgx_enclave_id_t */
 

@@ -17,6 +17,7 @@ void read_data(std::string file_name,std::vector<std::pair<uint64_t,uint64_t>> &
     while (full_key.size()<test_data_len&&input.read(reinterpret_cast<char*>(&high), sizeof(high)) && input.read(reinterpret_cast<char*>(&low), sizeof(low))) {
         full_key.emplace_back(high,low);
 	    input.read(reinterpret_cast<char*>(&target),sizeof(target));
+	    input.read(reinterpret_cast<char*>(&target),sizeof(target));
 	    targets.emplace_back(target);
     }
     input.close();

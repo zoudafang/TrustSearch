@@ -57,6 +57,7 @@ namespace{
 	containers cont;
 	std::vector<std::pair<uint64_t,uint64_t>> sign_data;
 	std::vector<uint32_t> targets_data;
+	skewed_partition parting;
 }
 
 containers::containers()
@@ -98,13 +99,13 @@ uint32_t containers::random_uuid()
 	id++;
 	return id;
 }
-void containers::prepare()
+void containers::prepare(uint32_t tmp_sub_hammdist,uint32_t k)
 {
 	LOGGER("Prepare");
 	int tmp1,tmp2,tmp3,tmp4=1;
 	int tmp=0;
 	uint32_t tmpx=0;
-	switch(sub_hammdist)
+	switch(tmp_sub_hammdist)//sub_hammdist
 	{
 		case 4:
 			for(int a=0;a<sub_keybit-3;a++)
@@ -121,7 +122,7 @@ void containers::prepare()
 							tmp4=0x0000000000000001<<d;
 							tmp=tmp1+tmp2+tmp3+tmp4;
 							tmpx=(uint32_t)tmp;
-							C_0_TO_subhammdis.push_back(tmpx);
+							C_0_TO_subhammdis[k].push_back(tmpx);
 						}
 					}
 				}
@@ -138,7 +139,7 @@ void containers::prepare()
 						tmp3=0x0000000000000001<<g;
 						tmp=tmp1+tmp2+tmp3;
 						tmpx=(uint32_t)tmp;
-						C_0_TO_subhammdis.push_back(tmpx);
+						C_0_TO_subhammdis[k].push_back(tmpx);
 					}
 				
 				}
@@ -152,7 +153,7 @@ void containers::prepare()
 					tmp2=0x0000000000000001<<j;
 					tmp=tmp1+tmp2;
 					tmpx=(uint32_t)tmp;
-					C_0_TO_subhammdis.push_back(tmpx);
+					C_0_TO_subhammdis[k].push_back(tmpx);
 				}
 			}
 		case 1:
@@ -160,11 +161,11 @@ void containers::prepare()
 			{
 				tmp=0x0000000000000001<<x;
 				tmpx=(uint32_t)tmp;
-				C_0_TO_subhammdis.push_back(tmpx);
+				C_0_TO_subhammdis[k].push_back(tmpx);
 			}
 		case 0:
 		{
-			C_0_TO_subhammdis.push_back(0);
+			C_0_TO_subhammdis[k].push_back(0);
 			break;
 		}
 		default:
@@ -241,9 +242,9 @@ void containers::get_test_pool()
 	uint64_t temp_key[2]={0};
 	uint32_t begin=0,index=0;//begin:the first index of test
 	uint32_t skip=1;//skip query
-	uint32_t range=100;//range query
+	uint32_t range=initialize_size;//range query
 	uint32_t space_local=20;
-   	sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));
+   	// sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));
 
 	//for temporal Locality
 	vector<uint32_t> local_list;
@@ -251,7 +252,7 @@ void containers::get_test_pool()
 	for(int i=0;i<100;i++){
    	sgx_read_rand(reinterpret_cast<unsigned char*>(&temp), sizeof(temp));
 	local_list.push_back(temp%initialize_size);}
-
+	printf("initialize_size:%d\n",initialize_size);
 	for(int i=0;i<initialize_size;i++)
 	{	
 		if(test_pool.size()>=test_size)
@@ -259,7 +260,7 @@ void containers::get_test_pool()
 			return;
 		}
 		index=(begin+(i*skip)%range);
-		if(i%100==0) {i=0;sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));}//space locality
+		// if(i%100==0) {i=0;sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));}//space locality
 		sgx_read_rand(reinterpret_cast<unsigned char*>(&index), sizeof(index));//rand query
 		// index=local_list[index%local_list.size()];//temporal locality
 		index=index%initialize_size;
@@ -289,7 +290,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	uint32_t sub[4]={0};
 	get_sub_fingerprint(sub,tmpquery);
 
-	static uint64_t bloomHit=0;static uint64_t bolomMiss=0;
+	static uint64_t bloomHit=0;static uint64_t bloomMiss=0;
 	static uint64_t valid_query=0;static uint64_t invalid_query=0;
 	uint32_t tmpsub1,tmpsub2,tmpsub3,tmpsub4=0;
 	vector<uint32_t> temp;
@@ -297,7 +298,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	uint64_t infoFullkey[2] ;uint32_t subInfo[4];
 	//tsl::hopscotch_map<uint32_t, std::vector<uint32_t>>::iterator got;
 	unordered_map<uint32_t, std::vector<uint32_t>>::iterator got;
-	for(auto& its:this->C_0_TO_subhammdis)
+	for(auto& its:this->C_0_TO_subhammdis[0])
 	{
 		tmpsub1=sub[0]^its;
 		tmpsub2=sub[1]^its;
@@ -306,99 +307,119 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	//	LOGGER("SUB FP INFO: %u %u %u %u",tmpsub1,tmpsub2,tmpsub3,tmpsub4);
 	//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 		//printf("num%d\n",candidate.size());
-		if(filters[0].contains(tmpsub1)){
-		auto it = sub_index1.find(tmpsub1);//times++;bloomHit++;
-		if(it!=sub_index1.end())
+		// if(filters[0].contains(tmpsub1)){
+		auto it = comp_sub_index1.find(tmpsub1);//times++;bloomHit++;
+		if(it!=comp_sub_index1.end())		//如果是compress后的，用comp_sub_index1 + for_uncompress；不然用sub_index1 + for(auto& got:temp){
 		{//valid_query++;
-			temp=it->second;
-			for(auto& got:temp){
-			candidate.insert(got);
+			// temp=it->second;
+			// for(auto& got:temp){
+			// candidate.insert(got);
+			// }
+			for_uncompress(it->second.first,out,it->second.second);
+			for(int i=0;i<it->second.second;i++)
+			{
+				candidate.insert(out[i]);
 			}
 			}//else invalid_query++;
-		}//else bolomMiss++;
+		// }//else bloomMiss++;
 		
-		tmpsub2=sub[1]^its;
-		if(filters[1].contains(tmpsub2)){
-		auto it = sub_index2.find(tmpsub2);//times++;bloomHit++;
-		if(it!=sub_index2.end())
-		{	//valid_query++;
-			temp=it->second;
-			for(auto& got:temp){
-			candidate.insert(got); 
-			}
-		}//else invalid_query++;
-		}//else bolomMiss++;
+		// tmpsub2=sub[1]^its;
+		// if(filters[1].contains(tmpsub2)){
+		// auto it = sub_index2.find(tmpsub2);//times++;bloomHit++;
+		// if(it!=sub_index2.end())
+		// {	//valid_query++;
+		// 	temp=it->second;
+		// 	for(auto& got:temp){
+		// 	candidate.insert(got); 
+		// 	}
+		// }//else invalid_query++;
+		// }//else bloomMiss++;
 		
-		tmpsub3=sub[2]^its;
-		if(filters[2].contains(tmpsub3)){
-		auto it = sub_index3.find(tmpsub3);//times++;bloomHit++;
-		if(it!=sub_index3.end())
-		{	//valid_query++;
-			temp=it->second;
-			for(auto& got:temp){
-			candidate.insert(got);
-			}
-		}//else invalid_query++;
-		}//else bolomMiss++;
-		tmpsub4=sub[3]^its;
-		if(filters[3].contains(tmpsub4)){
-		auto it = sub_index4.find(tmpsub4);//times++;bloomHit++;
-		if(it!=sub_index4.end())
-		{	//valid_query++;
-			temp=it->second;times++;
-			for(auto& got:temp){
-			candidate.insert(got); 
-			}
-		}//else invalid_query++;
-		}//else bolomMiss++;
+		// tmpsub3=sub[2]^its;
+		// if(filters[2].contains(tmpsub3)){
+		// auto it = sub_index3.find(tmpsub3);//times++;bloomHit++;
+		// if(it!=sub_index3.end())
+		// {	//valid_query++;
+		// 	temp=it->second;
+		// 	for(auto& got:temp){
+		// 	candidate.insert(got);
+		// 	}
+		// }//else invalid_query++;
+		// }//else bloomMiss++;
+		// tmpsub4=sub[3]^its;
+		// if(filters[3].contains(tmpsub4)){
+		// auto it = sub_index4.find(tmpsub4);//times++;bloomHit++;
+		// if(it!=sub_index4.end())
+		// {	//valid_query++;
+		// 	temp=it->second;times++;
+		// 	for(auto& got:temp){
+		// 	candidate.insert(got); 
+		// 	}
+		// }//else invalid_query++;
+		// }//else bloomMiss++;
 	}
-	// for(auto& its:this->C_0_TO_subhammdis)
-	// {
-	// 	tmpsub2=sub[1]^its;
-	// 	if(filters[1].contains(tmpsub2)){
-	// 	auto it = sub_index2.find(tmpsub2);//times++;bloomHit++;
-	// 	if(it!=sub_index2.end())
-	// 	{	
-	// 		temp=it->second;
-	// 		for(auto& got:temp){
-	// 		candidate.insert(got); 
-	// 		}
-	// 	}
-	// 	}//else bolomMiss++;
-	// }
-	// for(auto& its:this->C_0_TO_subhammdis)
-	// {
-	// 	tmpsub3=sub[2]^its;
-	// 	if(filters[2].contains(tmpsub3)){
-	// 	auto it = sub_index3.find(tmpsub3);//times++;bloomHit++;
-	// 	if(it!=sub_index3.end())
-	// 	{	
-	// 		temp=it->second;
-	// 		for(auto& got:temp){
-	// 		candidate.insert(got);
-	// 		}
-	// 	}
-	// 	}//else bolomMiss++;
-	// }
-	// for(auto& its:this->C_0_TO_subhammdis)
-	// {
-	// 	tmpsub4=sub[3]^its;
-	// 	if(filters[3].contains(tmpsub4)){
-	// 	auto it = sub_index4.find(tmpsub4);//times++;bloomHit++;
-	// 	if(it!=sub_index4.end())
-	// 	{	
-	// 		temp=it->second;//times++;
-	// 		for(auto& got:temp){
-	// 		candidate.insert(got); 
-	// 		}
-	// 	}
-	// 	}//else bolomMiss++;
-	// }
+	for(auto& its:this->C_0_TO_subhammdis[1])
+	{
+		tmpsub2=sub[1]^its;
+		// if(filters[1].contains(tmpsub2)){
+		auto it = comp_sub_index2.find(tmpsub2);//times++;bloomHit++;
+		if(it!=comp_sub_index2.end())
+		{	//valid_query++;
+			// temp=it->second;
+			// for(auto& got:temp){
+			// candidate.insert(got); 
+			// }
+			for_uncompress(it->second.first,out,it->second.second);
+			for(int i=0;i<it->second.second;i++)
+			{
+				candidate.insert(out[i]);
+			}
+		}//else invalid_query++;
+		// }//else bloomMiss++;
+	}
+	for(auto& its:this->C_0_TO_subhammdis[1])
+	{
+		tmpsub3=sub[2]^its;
+		// if(filters[2].contains(tmpsub3)){
+		auto it = comp_sub_index3.find(tmpsub3);//times++;bloomHit++;
+		if(it!=comp_sub_index3.end())
+		{	//valid_query++;
+			// temp=it->second;
+			// for(auto& got:temp){
+			// candidate.insert(got);
+			// }
+			for_uncompress(it->second.first,out,it->second.second);
+			for(int i=0;i<it->second.second;i++)
+			{
+				candidate.insert(out[i]);
+			}
+		}//else invalid_query++;
+		// }//else bloomMiss++;
+	}
+	for(auto& its:this->C_0_TO_subhammdis[1])
+	{
+		tmpsub4=sub[3]^its;
+		// if(filters[3].contains(tmpsub4)){
+		auto it = comp_sub_index4.find(tmpsub4);//times++;bloomHit++;
+		if(it!=comp_sub_index4.end())
+		{	//valid_query++;
+			// temp=it->second;//times++;
+			// for(auto& got:temp){
+			// candidate.insert(got); 
+			// }
+			for_uncompress(it->second.first,out,it->second.second);
+			for(int i=0;i<it->second.second;i++)
+			{
+				candidate.insert(out[i]);
+			}
+		}//else invalid_query++;
+		// }//else bloomMiss++;
+	}
 	uint64_t cmp_hamm[2]={0};
 	uint64_t count=0;
 	//printf("times1:%d times2 %d\n",line_times,times);
-	// printf("bloomHit:%lu bloomMiss:%lu\n",bloomHit,bolomMiss);
-	//printf("valid_query:%lu invalid_query:%lu,sum%lu\n",valid_query,invalid_query,valid_query+invalid_query);
+	// printf("bloomHit:%lu bloomMiss:%lu\n",bloomHit,bloomMiss);
+	// printf("valid_query:%lu invalid_query:%lu,sum%lu\n",valid_query,invalid_query,valid_query+invalid_query);
 
 	information got_out;
 	//tsl::hopscotch_map<uint32_t,information>::const_iterator got_out;
@@ -441,17 +462,36 @@ void containers::test()
 }
 void containers::changeHammingDist(uint64_t hammdist)
 {
-	if(hammdist==this->hammdist)return;
-	this->hammdist=hammdist;
-	this->sub_hammdist=hammdist/4;
-	this->C_0_TO_subhammdis.clear();
-	this->prepare();
+	// if(hammdist==this->hammdist)return;
+	// this->hammdist=hammdist;
+	// this->sub_hammdist=hammdist/4;
+	// this->C_0_TO_subhammdis.clear();
+	// this->prepare();
+}
+void get_rand_dim(){
+	uint32_t temp;
+   	sgx_read_rand(reinterpret_cast<unsigned char*>(&temp), sizeof(temp));
+	for(int i=128;i>0;i--)
+	{
+   		sgx_read_rand(reinterpret_cast<unsigned char*>(&temp), sizeof(temp));
+		temp%=i;
+		int tmp=cont.dimension[i-1];
+		cont.dimension[i-1]=cont.dimension[temp];
+		cont.dimension[temp]=tmp;
+	}
+	for(int i=0;i<128;i++)printf("%d ",cont.dimension[i]);
 }
 void init()
 {
+	// uint32_t tmp[128]={0,38,111,56,45,35,121,74,67,79,120,124,23,103,80,118,36,98,44,76,19,24,87,75,77,125,18,54,29,3,114,53,32,52,71,113,83,91,16,31,107,37,46,119,88,26,90,104,25,126,64,95,66,65,116,89,12,6,47,49,61,14,11,82,50,96,4,28,100,17,20,117,15,55,21,30,8,78,58,27,22,106,70,86,101,10,85,109,110,13,63,33,112,7,59,84,39,97,69,99,68,51,102,73,93,105,81,40,108,60,41,2,92,5,42,115,9,34,72,43,1,57,122,123,62,48,94,127};
+	uint32_t tmp[128]={0,40,2,46,94,36,108,57,26,49,116,20,66,61,99,12,54,101,42,11,122,119,86,78,19,102,113,118,106,6,88,50,32,103,31,22,84,60,107,127,97,95,126,91,52,76,109,62,93,121,117,59,48,92,68,104,34,85,30,33,25,1,73,98,64,125,58,71,110,43,115,124,7,100,65,96,15,21,72,63,111,10,80,24,17,44,8,69,83,9,112,53,123,3,37,90,75,13,79,14,47,5,4,51,55,105,28,38,29,23,16,82,41,35,114,70,81,56,27,77,120,89,45,87,67,74,18,39};
+	printf("%d\n",tmp[127]);
+	for(int i=0;i<128;i++)cont.dimension[i]=tmp[i];
+	// get_rand_dim();
 	printf("run code!\n");
-	cont.prepare();
-	printf("c_o size: %d\n",cont.C_0_TO_subhammdis.size());
+	cont.prepare(cont.sub_hammdist,0);
+	cont.prepare(cont.sub_hammdist-1,1);
+	printf("c_o size: %d\n",cont.C_0_TO_subhammdis[0].size());
 	printf("Init!\n");
 	cont.initialize();
 	// cont.get_test_pool();
@@ -463,12 +503,95 @@ void test_run()
 	cont.test();
 	printf("Successfully found similar photos! successful_num=%d.\n",cont.successful_num);
 }
+void compress_sub_index()
+{
+	vector<uint32_t> v;
+ 	uint32_t length = 3000,comp_len;
+  	uint8_t* comp_data;
+	uint32_t sub[4]={0};
+	uint64_t temp_key[2]={0};
+	uint32_t origin_len=0,compress_len=0;
+	for(auto& val:cont.sub_index1){
+		length=val.second.size();if(length>10)origin_len+=length*4;
+		comp_len = for_compressed_size_sorted(val.second.data(), length);
+		comp_data=(uint8_t*)malloc(comp_len);
+		// printf("length:%d comp_len:%d\n",length,comp_len);
+		for_compress_sorted(val.second.data(), comp_data, length);
+		val.second.clear();vector<uint32_t> empty_v=vector<uint32_t>();;val.second.swap(empty_v);
+		cont.comp_sub_index1[val.first] = std::make_pair(comp_data,length);
+		if(length>10)compress_len+=comp_len;
+	}
+	printf("origin_len:%d compress_len:%d\n",origin_len,compress_len);
+	cont.sub_index1.clear();
+	unordered_map<uint32_t,vector<uint32_t>>().swap(cont.sub_index1);
+
+	for(auto& val:cont.sub_index2){
+		length=val.second.size();
+		comp_len = for_compressed_size_sorted(val.second.data(), length);
+		comp_data=(uint8_t*)malloc(comp_len);
+		for_compress_sorted(val.second.data(), comp_data, length);
+		val.second.clear();vector<uint32_t> empty_v=vector<uint32_t>();;val.second.swap(empty_v);
+		cont.comp_sub_index2[val.first] = std::make_pair(comp_data,length);
+	}
+	cont.sub_index2.clear();
+	unordered_map<uint32_t,vector<uint32_t>>().swap(cont.sub_index2);
+
+	for(auto& val:cont.sub_index3){
+		length=val.second.size();
+		comp_len = for_compressed_size_sorted(val.second.data(), length);
+		comp_data=(uint8_t*)malloc(comp_len);
+		for_compress_sorted(val.second.data(), comp_data, length);
+		val.second.clear();vector<uint32_t> empty_v=vector<uint32_t>();;val.second.swap(empty_v);
+		cont.comp_sub_index3[val.first] = std::make_pair(comp_data,length);
+	}
+	cont.sub_index3.clear();
+	unordered_map<uint32_t,vector<uint32_t>>().swap(cont.sub_index3);
+
+	for(auto& val:cont.sub_index4){
+		length=val.second.size();
+		comp_len = for_compressed_size_sorted(val.second.data(), length);
+		comp_data=(uint8_t*)malloc(comp_len);
+		for_compress_sorted(val.second.data(), comp_data, length);
+		val.second.clear();vector<uint32_t> empty_v=vector<uint32_t>();;val.second.swap(empty_v);
+		cont.comp_sub_index4[val.first] = std::make_pair(comp_data,length);
+	}
+	cont.sub_index4.clear();
+	unordered_map<uint32_t,vector<uint32_t>>().swap(cont.sub_index4);
+}
 void init_test_pool(){
+	// parting.set_skewed_partition(cont.full_index);
+	// vector<uint32_t> tmp;
+	// parting.make_partition(tmp);		//make partition
+	// write_dimension(tmp.data());
+	compress_sub_index();		//compress sub_index to comp_sub_index
 	cont.get_test_pool();
+	printf("sub_index1 size: %d,sub_index2 size: %d,sub_index3 size: %d,sub_index4 size: %d\n",cont.sub_index1.size(),cont.sub_index2.size(),cont.sub_index3.size(),cont.sub_index4.size());	
 	printf("The full index entry is: %d \n",cont.full_index.size());
 	printf("The number of queries is: %d \n",cont.test_pool.size());
 }
-
+uint32_t get_dimension(pair<uint64_t,uint64_t> info,uint32_t dim){
+    uint64_t key=info.first;
+    if(dim>63){key=info.second;dim-=63;}
+    uint64_t mask=1ULL<<(63-dim);
+    return (key&mask)>>(63-dim);
+}
+void get_dim(pair<uint64_t,uint64_t> &pairs){
+	int left=0;
+	uint64_t tmp=0;
+	std::pair<uint64_t,uint64_t> pair2=pairs;
+	for(int i=0;i<64;i++){
+		tmp=(tmp<<1)+get_dimension(pair2,cont.dimension[i]);
+		left+=1;
+	}
+	pairs.first=tmp;
+	tmp=0;
+	left=0;
+	for(int i=64;i<128;i++){
+		tmp=(tmp<<1)+get_dimension(pair2,cont.dimension[i]);
+		left+=1;
+	}
+	pairs.second=tmp;
+}
 void encall_send_data(void *dataptr,size_t len)
 {
 	// sign_data.clear();
@@ -485,6 +608,7 @@ void encall_send_data(void *dataptr,size_t len)
 	std::pair<uint64_t, uint64_t> tmp;
 	for(int i=0;i<len;i++)//auto& tmp:sign_data
 	{	tmp=data[i];
+		get_dim(tmp);
 		temp_information.fullkey[0]=tmp.first;//temp_key[0];
 		temp_information.fullkey[1]=tmp.second;//temp_key[1];
 		// temp_information.identifier=targets_data[out_id];
