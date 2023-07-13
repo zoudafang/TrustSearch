@@ -251,7 +251,7 @@ void containers::init_after_recv_data(){
 		for(;j[k]>0&&temp==sub_index_liner[k][j[k]-1].sub_key;j[k]--);
 		auto its=sub_index_liner[k].begin()+j[k];
 		if(sub_index[k].find(temp)==sub_index[k].end())lru_index_add(k,its,sub_index_liner[k]);//int temps=j[k];
-		// for(;its->sub_key==temp&&its<sub_index_liner[k].end;its++,j[k]++);
+		// for(;its->sub_key==temp&&its<sub_index_liner[k].end();its++,j[k]++);
 		}
 	}
 	//printf sub_index size
@@ -509,8 +509,8 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 }
 void containers::test()
 {
-	//------------test insert and query----------
-	// int insert_num=5000;
+	// ------------test insert and query----------
+	// int insert_num=500;
 	// pair<uint64_t, uint64_t>* tempPair = new pair<uint64_t, uint64_t>[insert_num];
 	// for(int i=0;i<insert_num;i++)tempPair[i] = make_pair(full_index[3000+i].fullkey[0], full_index[3000+i].fullkey[1]);
 	// insert_fingerprint(tempPair,insert_num);
@@ -518,9 +518,11 @@ void containers::test()
 	// int insert_num=1;
 	// pair<uint64_t, uint64_t> tempPair(full_index[0].fullkey[0],full_index[0].fullkey[1]);
 	// insert_fingerprint(&tempPair,insert_num);
+
+	//------test insert new data to linear-list------
+	// for(int i=0;i<4;i++)this->insert_new_datamap(i);
 	printf("Test!\n");
 	uint64_t temp_key[2]={0};
-	// for(int i=0;i<4;i++)this->insert_new_datamap(i);
 
 	for(auto &itx : test_pool)
 	{
@@ -532,6 +534,7 @@ void containers::test()
 	find_time/=1e6;
 	insert_time/=1e6;
 	verify_time/=1e6;
+	//total时间（ms）， find：查询map和linear的时间，insert：插入到set<candidate>的时间，verify：验证candidate的时间
 	printf("total=time:%d,sum:%d, find-time:%d, insert-time:%d, verify-time:%d\n",total_time,find_time+insert_time+verify_time,find_time,insert_time,verify_time);
 }
 void containers::changeHammingDist(uint64_t hammdist)
@@ -561,7 +564,7 @@ void containers::insert_fingerprint(pair<uint64_t,uint64_t>* data,uint32_t lengt
 	uint32_t sub[4]={0};
 	information temp_information;
 	sub_information sub_info[4];
-	if(length>sub_map_size*5){
+	if(length>sub_map_size*5){//改成length>0，则测试直接insert线性表的时间
 		vector<sub_information> tmp_sub_vector[4] ;
 		for(int i=0;i<4;i++)tmp_sub_vector[i].reserve(length);
 		for(int i=0;i<length;i++)
@@ -604,7 +607,7 @@ void containers::insert_fingerprint(pair<uint64_t,uint64_t>* data,uint32_t lengt
 				filters[j].insert(sub[j]);
 				insert_to_submap(j,sub[j],out_id);
 				
-				//直接插入sub-index，测试纯hashmap的insert时间
+				//直接插入sub-index，测试纯hashmap的insert时间,注释掉insert_to_submap
 				// if(sub_index[j].find(sub[j])!=sub_index[j].end())sub_index[j][sub[j]]->identifiers.push_back(out_id);
 				// else {
 				// 	sub_index_node* temp_node=new sub_index_node;
@@ -667,10 +670,10 @@ void encall_send_data(void *dataptr,size_t len)
 		}
 		cont.full_index.push_back(temp_information);
 	}
-	// printf("The full index entry is: %d \n",cont.test_pool.size()-10);
 }
 void encall_send_targets(void *dataptr,size_t len)
 {
+	//TODO: 暂时没有考虑targets发送；之后可以集成到send_data中，用一个vector<uint>同时保存data和targets
 	uint32_t* data =  reinterpret_cast<uint32_t*>(dataptr);
 	// targets_data.insert(targets_data.end(),data,data+len);
 }
@@ -743,8 +746,9 @@ void encall_find_batch(void *dataptr,uint32_t* res,uint32_t len,uint32_t len_res
 }
 //move the visited node to the tail of the list
 void containers::lru_index_visit(int sub_i,sub_index_node* node){
+	//if node->pre==this, the node is not in LRU list, return
 	if(node->pre==nullptr||node->pre==new_data_head[sub_i])return;
-	if(node==lru_n[sub_i].index_tail)return;
+	if(node==lru_n[sub_i].index_tail)return;	//if the node is the tail of the list,return
 	//move the node to the tail of the index list
 	node->next->pre=node->pre;
 	node->pre->next=node->next;
@@ -755,42 +759,38 @@ void containers::lru_index_visit(int sub_i,sub_index_node* node){
 //add the node to the tail of the list
 void containers::lru_index_add(int sub_i,vector<sub_information>::iterator node_liner,vector<sub_information>& sub_linear){
 	//if the size of the index list is larger than the max size,remove the first node
-	sub_index_node* remove_node=nullptr;
-	if(lru_n[sub_i].index_size>=lru_n[sub_i].map_size){
+	sub_index_node* remove_node = nullptr;
+	if(lru_n[sub_i].index_size >= lru_n[sub_i].map_size){
 		remove_node = lru_n[sub_i].index_head->next;
 		sub_index_node* first = remove_node->next;
 		lru_n[sub_i].index_head->next = first;
 		first->pre = lru_n[sub_i].index_head;
 		auto tmp=sub_index[sub_i].find(remove_node->sub_key);
+
+		//if tmp is not in the new_data_head,remove it from the map
 		if(tmp!=sub_index[sub_i].end()&&tmp->second->pre == lru_n[sub_i].index_head)sub_index[sub_i].erase(remove_node->sub_key);
 		remove_node->pre = nullptr;remove_node->next=nullptr;
+	}else{ lru_n[sub_i].index_size++; }
 
-		//if the new data is in the removed list,add it to the linear list
-		remove_node->pre = lru_n[sub_i].index_tail;
-		lru_n[sub_i].index_tail->next = remove_node;
-		lru_n[sub_i].index_tail = remove_node;
-		//delete remove_node;
-	}else{lru_n[sub_i].index_size++;}
-
-	//add node to the tail of the index list
+	//add node to the tail of the LRU list
 	sub_index_node* node=nullptr;
-	if(remove_node==nullptr) node=&cont.sub_nodes[sub_i][lru_n[sub_i].index_size-1];//new sub_index_node{node_liner->sub_key,node_liner,nullptr,nullptr};
-	else node=remove_node;
-	node->sub_key=node_liner->sub_key;
+	if(remove_node==nullptr) node = &cont.sub_nodes[sub_i][lru_n[sub_i].index_size-1];//new sub_index_node{node_liner->sub_key,node_liner,nullptr,nullptr};
+	else node = remove_node;
+	node->sub_key = node_liner->sub_key;
 	// node->liner_node=node_liner;
 	node->identifiers.clear();
 	for(;node_liner!=sub_linear.end()&&node_liner->sub_key==node->sub_key;node_liner++){
 		node->identifiers.push_back(node_liner->identifiers);
 	}
-	// node->identifiers.shrink_to_fit();
 	node->next=nullptr;node->pre=nullptr;
-	// cont.sub_filters[sub_i].insert(node_liner->sub_key);
 	sub_index[sub_i][node->sub_key]=node;
-	sub_index_node* temp=node;//sub_index[node_liner->sub_info.sub_key];
-	lru_n[sub_i].index_tail->next=temp;
-	temp->pre=lru_n[sub_i].index_tail;
-	lru_n[sub_i].index_tail=temp;
+	
+	//move the node to the tail of the LRU list
+	lru_n[sub_i].index_tail->next=node;
+	node->pre=lru_n[sub_i].index_tail;
+	lru_n[sub_i].index_tail=node;
 };
+//add the node in the new_data_head list to the linear list
 void containers::insert_new_datamap(int sub_i){
 	vector<sub_information> tmp_sub_vector;
 	sub_information sub_info;
@@ -826,16 +826,21 @@ void containers::insert_new_datamap(int sub_i){
 	initialize_size+=tmp_sub_vector.size();
 	change_sub_map(sub_i);
 };
+//insert the data to the submap
 void containers::insert_to_submap(int sub_i,uint32_t sub_key,uint32_t identifier){
 	auto sub_node = sub_index[sub_i].find(sub_key);
 	if(sub_node != sub_index[sub_i].end()){
+		//if the sub_node is not in LRU, add new data directly because its vector has all data with same sub_key
 		if(sub_node->second->pre==nullptr||sub_node->second->pre==new_data_head[sub_i]){
 			sub_node->second->identifiers.push_back(identifier);
 			return;
 		}
+		//if the sub_node is in LRU, add the identifiers in old_node to the new_node, and remove the useless old_node from sub_index
+		//the new node is in the new_data_head list,not in the LRU list
 		sub_index_node* tmp = new sub_index_node{sub_key,vector<uint32_t>(),nullptr,nullptr};
 		tmp->next = new_data_head[sub_i]->next;
 		new_data_head[sub_i]->next = tmp;
+
 		tmp->identifiers.push_back(identifier);
 		for(auto &it:sub_node->second->identifiers){
 			tmp->identifiers.push_back(it);
@@ -846,7 +851,7 @@ void containers::insert_to_submap(int sub_i,uint32_t sub_key,uint32_t identifier
 		// sub_node->second->identifiers.clear();
 		// sub_node->second->identifiers.shrink_to_fit();
 
-		//move the useless node to the head of the LRU list
+		//move the useless node in LRU to the head of the LRU list
 		node->pre->next = node->next;
 		node->next->pre = node->pre;
 		if(node == lru_n[sub_i].index_tail) lru_n[sub_i].index_tail = node->pre;
@@ -862,14 +867,16 @@ void containers::insert_to_submap(int sub_i,uint32_t sub_key,uint32_t identifier
 	auto node_liner = std::lower_bound(sub_index_liner[sub_i].begin(),sub_index_liner[sub_i].end(), sub_key,compareFirst);
 	if(node_liner == sub_index_liner[sub_i].end()) node->pre = new_data_head[sub_i]; //this is a new sub_key in the data_set
 	for(;node_liner != sub_index_liner[sub_i].end()&&node_liner->sub_key == node->sub_key;node_liner++){
-		node->identifiers.push_back(node_liner->identifiers);
+		node->identifiers.push_back(node_liner->identifiers);// add the data in the linear list to the new node
 	}
-
 	node->identifiers.push_back(identifier);
+
+	//add node to new_data_head
 	sub_index[sub_i][sub_key] = node;
 	node->next = new_data_head[sub_i]->next;
 	new_data_head[sub_i]->next = node;
 };
+
 //if insert too many data, increase the size of the submap
 void containers::change_sub_map(int sub_i){
 	uint32_t new_sub_map_size = initialize_size/2000;
