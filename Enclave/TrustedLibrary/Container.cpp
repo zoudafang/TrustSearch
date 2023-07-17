@@ -1,4 +1,4 @@
-#include"Container.h"
+#include "Container.h"
 #include <cstdarg>
 #define KNRM "\x1B[0m"
 #define KRED "\x1B[31m"
@@ -8,7 +8,7 @@
 #define KMAG "\x1B[35m"
 #define KCYN "\x1B[36m"
 #define KWHT "\x1B[37m"
-//change!!!
+// change!!!
 #include "Enclave_t.h"
 #include "../Enclave.h"
 #include "sgx_trts.h"
@@ -16,12 +16,12 @@
 #include <cstdio>
 #include <bitset>
 
-uint64_t containers::keybit=128;
-uint64_t containers::hammdist=8;
-uint64_t containers::sub_index_num=4;
-uint32_t containers::test_size=1000;
-uint32_t containers::initialize_size=450000;
-uint32_t containers::sub_map_size=4500;
+uint64_t containers::keybit = 128;
+uint64_t containers::hammdist = 8;
+uint64_t containers::sub_index_num = 4;
+uint32_t containers::test_size = 1000;
+uint32_t containers::initialize_size = 450000;
+uint32_t containers::sub_map_size = 4500;
 
 // void log(const char *file_name, const char *function_name, size_t line, const char *fmt, ...) {
 // #ifdef DEBUG
@@ -54,73 +54,85 @@ uint32_t containers::sub_map_size=4500;
 //     }
 // }
 
-namespace{
+namespace
+{
 	containers cont;
-	std::vector<std::pair<uint64_t,uint64_t>> sign_data;
+	std::vector<std::pair<uint64_t, uint64_t>> sign_data;
 	std::vector<uint32_t> targets_data;
-	static long long total_time=0;
-	static long long find_time=0;
-	static long long insert_time=0;
-	static long long verify_time=0;
+	static long long total_time = 0;
+	static long long find_time = 0;
+	static long long insert_time = 0;
+	static long long verify_time = 0;
 }
 
 containers::containers()
 {
-	sub_keybit=(int)keybit/sub_index_num;
+	sub_keybit = (int)keybit / sub_index_num;
 	// sub_hammdist=hammdist/sub_index_num;
-	for(int j=hammdist-sub_index_num+1;j>0;){//the sum of sub_hammdist is hammdist - sub_index_num + 1
-		for(int i=0;i<sub_index_num;i++)
+	for (int j = hammdist - sub_index_num + 1; j > 0;)
+	{ // the sum of sub_hammdist is hammdist - sub_index_num + 1
+		for (int i = 0; i < sub_index_num; i++)
 		{
-			if(j<=0)break;
-			sub_hammdist[i]++;		//if hammdist=8,sub_hammdist={1,1,1,2}
+			if (j <= 0)
+				break;
+			sub_hammdist[i]++; // if hammdist=8,sub_hammdist={1,1,1,2}
 			j--;
 		}
 	}
 	// int temp[]={2,2,2,2};
-	for(int i=0;i<sub_index_num;i++)
+	for (int i = 0; i < sub_index_num; i++)
 	{
 		// sub_hammdist[i]=temp[i];
-		printf("sub_hammdist[%d]=%d\n",i,sub_hammdist[i]);
+		printf("sub_hammdist[%d]=%d\n", i, sub_hammdist[i]);
 	}
 }
 
-bool customCompare(const sub_information& p1, const sub_information& p2) {
-    if (p1.sub_key < p2.sub_key) {
-        return true;
-    } else if (p1.sub_key == p2.sub_key) {
-        return p1.identifiers < p2.identifiers;
-    }
-    return false;
+bool customCompare(const sub_information &p1, const sub_information &p2)
+{
+	if (p1.sub_key < p2.sub_key)
+	{
+		return true;
+	}
+	else if (p1.sub_key == p2.sub_key)
+	{
+		return p1.identifiers < p2.identifiers;
+	}
+	return false;
 }
-bool compareFirst(const sub_information& p, uint32_t x) {
-    return p.sub_key < x;
+bool compareFirst(const sub_information &p, uint32_t x)
+{
+	return p.sub_key < x;
+}
+bool compareFirst_comp(const sub_info_comp &p, uint32_t x)
+{
+	return p.sub_key < x;
 }
 void containers::random_128(uint64_t *temp_key)
 {
-	unsigned char rand[16]={0};
-	sgx_read_rand(rand,16);
-	temp_key[0]=(uint64_t)rand[0];
-	for(int i=1;i<8;i++)
+	unsigned char rand[16] = {0};
+	sgx_read_rand(rand, 16);
+	temp_key[0] = (uint64_t)rand[0];
+	for (int i = 1; i < 8; i++)
 	{
-		temp_key[0]=temp_key[0]<<8;
-		temp_key[0]=temp_key[0]+(uint64_t)rand[i];
+		temp_key[0] = temp_key[0] << 8;
+		temp_key[0] = temp_key[0] + (uint64_t)rand[i];
 	}
-	temp_key[1]=(uint64_t)rand[8];
-	for(int j=1;j<8;j++)
+	temp_key[1] = (uint64_t)rand[8];
+	for (int j = 1; j < 8; j++)
 	{
-	   	temp_key[1]=temp_key[1]<<8;
-	   	temp_key[1]=temp_key[1]+(uint64_t)rand[j+8];
+		temp_key[1] = temp_key[1] << 8;
+		temp_key[1] = temp_key[1] + (uint64_t)rand[j + 8];
 	}
 }
-void containers::get_sub_fingerprint(uint32_t *sub_fingerprint,uint64_t *fingerprint)
+void containers::get_sub_fingerprint(uint32_t *sub_fingerprint, uint64_t *fingerprint)
 {
-	sub_fingerprint[0]=fingerprint[0]&0xffffffff;
-	fingerprint[0]=fingerprint[0]>>32;
-	sub_fingerprint[1]=fingerprint[0]&0xffffffff;
+	sub_fingerprint[0] = fingerprint[0] & 0xffffffff;
+	fingerprint[0] = fingerprint[0] >> 32;
+	sub_fingerprint[1] = fingerprint[0] & 0xffffffff;
 
-	sub_fingerprint[2]=fingerprint[1]&0xffffffff;
-	fingerprint[1]=fingerprint[1]>>32;
-	sub_fingerprint[3]=fingerprint[1]&0xffffffff;
+	sub_fingerprint[2] = fingerprint[1] & 0xffffffff;
+	fingerprint[1] = fingerprint[1] >> 32;
+	sub_fingerprint[3] = fingerprint[1] & 0xffffffff;
 }
 uint32_t containers::random_uuid()
 {
@@ -128,359 +140,459 @@ uint32_t containers::random_uuid()
 	id++;
 	return id;
 }
-void containers::prepare(uint32_t sub_hammdist,vector<uint32_t>&C_0_TO_subhammdis)
+void containers::prepare(uint32_t sub_hammdist, vector<uint32_t> &C_0_TO_subhammdis)
 {
 	LOGGER("Prepare");
-	int tmp1,tmp2,tmp3,tmp4=1;
-	int tmp=0;
-	uint32_t tmpx=0;
-	switch(sub_hammdist)
+	int tmp1, tmp2, tmp3, tmp4 = 1;
+	int tmp = 0;
+	uint32_t tmpx = 0;
+	switch (sub_hammdist)
 	{
-		case 4:
-			for(int a=0;a<sub_keybit-3;a++)
+	case 4:
+		for (int a = 0; a < sub_keybit - 3; a++)
+		{
+			tmp1 = 0x0000000000000001 << a;
+			for (int b = 1 + a; b < sub_keybit - 2; b++)
 			{
-				tmp1=0x0000000000000001<<a;
-				for(int b=1+a;b<sub_keybit-2;b++)
+				tmp2 = 0x0000000000000001 << b;
+				for (int c = 1 + b; c < sub_keybit - 1; c++)
 				{
-					tmp2=0x0000000000000001<<b;
-					for(int c=1+b;c<sub_keybit-1;c++)
+					tmp3 = 0x0000000000000001 << c;
+					for (int d = 1 + c; d < sub_keybit; d++)
 					{
-						tmp3=0x0000000000000001<<c;
-						for(int d=1+c;d<sub_keybit;d++)
-						{
-							tmp4=0x0000000000000001<<d;
-							tmp=tmp1+tmp2+tmp3+tmp4;
-							tmpx=(uint32_t)tmp;
-							C_0_TO_subhammdis.push_back(tmpx);
-						}
-					}
-				}
-			}
-		case 3:
-			for(int e=0;e<sub_keybit-2;e++)
-			{
-				tmp1=0x0000000000000001<<e;
-				for(int f=1+e;f<sub_keybit-1;f++)
-				{
-					tmp2=0x0000000000000001<<f;
-					for(int g=1+f;g<sub_keybit;g++)
-					{
-						tmp3=0x0000000000000001<<g;
-						tmp=tmp1+tmp2+tmp3;
-						tmpx=(uint32_t)tmp;
+						tmp4 = 0x0000000000000001 << d;
+						tmp = tmp1 + tmp2 + tmp3 + tmp4;
+						tmpx = (uint32_t)tmp;
 						C_0_TO_subhammdis.push_back(tmpx);
 					}
-				
 				}
 			}
-		case 2:
-			for(int i=0;i<sub_keybit-1;i++)
+		}
+	case 3:
+		for (int e = 0; e < sub_keybit - 2; e++)
+		{
+			tmp1 = 0x0000000000000001 << e;
+			for (int f = 1 + e; f < sub_keybit - 1; f++)
 			{
-				tmp1=0x0000000000000001<<i;
-				for(int j=1+i;j<sub_keybit;j++)
+				tmp2 = 0x0000000000000001 << f;
+				for (int g = 1 + f; g < sub_keybit; g++)
 				{
-					tmp2=0x0000000000000001<<j;
-					tmp=tmp1+tmp2;
-					tmpx=(uint32_t)tmp;
+					tmp3 = 0x0000000000000001 << g;
+					tmp = tmp1 + tmp2 + tmp3;
+					tmpx = (uint32_t)tmp;
 					C_0_TO_subhammdis.push_back(tmpx);
 				}
 			}
-		case 1:
-			for(int x=0;x<sub_keybit;x++)
+		}
+	case 2:
+		for (int i = 0; i < sub_keybit - 1; i++)
+		{
+			tmp1 = 0x0000000000000001 << i;
+			for (int j = 1 + i; j < sub_keybit; j++)
 			{
-				tmp=0x0000000000000001<<x;
-				tmpx=(uint32_t)tmp;
+				tmp2 = 0x0000000000000001 << j;
+				tmp = tmp1 + tmp2;
+				tmpx = (uint32_t)tmp;
 				C_0_TO_subhammdis.push_back(tmpx);
 			}
-		case 0:
-		{
-			C_0_TO_subhammdis.push_back(0);
-			break;
 		}
-		default:
-			break;
+	case 1:
+		for (int x = 0; x < sub_keybit; x++)
+		{
+			tmp = 0x0000000000000001 << x;
+			tmpx = (uint32_t)tmp;
+			C_0_TO_subhammdis.push_back(tmpx);
+		}
+	case 0:
+	{
+		C_0_TO_subhammdis.push_back(0);
+		break;
+	}
+	default:
+		break;
 	}
 }
+
 void containers::initialize()
 {
-	uint64_t temp_key[2]={0};
-	uint32_t out_id=0;
-	uint32_t sub[4]={0};
+	uint64_t temp_key[2] = {0};
+	uint32_t out_id = 0;
+	uint32_t sub[4] = {0};
 	information temp_information;
 	containers::initialize_size = DATA_LEN;
-	
-	full_index.reserve(initialize_size+1000);
-	sub_index_liner=new vector<sub_information>[4];
-	// for(int i=0;i<4;i++)sub_index_liner[i]=new sub_information[initialize_size];
-	for(int i=0;i<4;i++)sub_index_liner[i].reserve(initialize_size);
 
-	containers::sub_map_size = initialize_size/2000;//initialize_size//1500,2500,1000
-	for(int i=0;i<4;i++){
-	lru_n[i]=lru_node{sub_map_size,0,nullptr,nullptr};
-	sub_index_node* head1=new sub_index_node;
-	lru_n[i].index_head=head1;
-	lru_n[i].index_tail=head1;
-	sub_index_node node_temp{0,vector<uint32_t>(),nullptr,nullptr};
-	new_data_head[i] = new sub_index_node{0,vector<uint32_t>(),nullptr,nullptr};
+	full_index.reserve(initialize_size + 1000);
+	sub_index_liner = new vector<sub_information>[4];
+	// for(int i=0;i<4;i++)sub_index_liner[i]=new sub_information[initialize_size];
+	for (int i = 0; i < 4; i++)
+		sub_index_liner[i].reserve(initialize_size);
+
+	containers::sub_map_size = initialize_size / 2000; // sub_map占据比例，可调整
+	for (int i = 0; i < 4; i++)
+	{
+		lru_n[i] = lru_node{sub_map_size, 0, nullptr, nullptr};
+		sub_index_node *head1 = new sub_index_node;
+		lru_n[i].index_head = head1;
+		lru_n[i].index_tail = head1;
+		sub_index_node node_temp{0, 0, nullptr, nullptr};
+		new_data_head[i] = new sub_index_node{0, 0, nullptr, nullptr};
 	}
 
 	sub_information sub_info[4];
 	bloom_parameters parameters;
-    parameters.projected_element_count = initialize_size; // 预计插入initialize_size个元素
-    parameters.false_positive_probability = 0.01; // 期望的误判率为0.1
-    parameters.compute_optimal_parameters(); // 计算最优参数
-	parameters.random_seed=0xA5A5A5A5;
-	for(int i=0;i<4;i++)filters[i]=bloom_filter(parameters);
+	parameters.projected_element_count = initialize_size; // 预计插入initialize_size个元素
+	parameters.false_positive_probability = 0.3;		  // 期望的误判率为0.1
+	parameters.compute_optimal_parameters();			  // 计算最优参数
+	parameters.random_seed = 0xA5A5A5A5;
+	for (int i = 0; i < 4; i++)
+		filters[i] = bloom_filter(parameters);
 	return;
 }
-void containers::init_after_recv_data(){
-	for(int i=0;i<4;i++){
-		std::sort(sub_index_liner[i].begin(),sub_index_liner[i].end(),customCompare);
+void containers::init_after_recv_data()
+{
+	if (sub_index_liner[0].size() == 0)
+		return;
+
+	// 排序sub_index_liner，按照sub_key从小到大排序，然后identifer从小到大排序
+	for (int i = 0; i < 4; i++)
+	{
+		std::sort(sub_index_liner[i].begin(), sub_index_liner[i].end(), customCompare);
 	}
-	int j[4]={0};
-	//for(int i=0;i<4;i++)j[i]=sub_index_liner[i][0];
-	printf("subsize:%d\n",sub_map_size);
-	sub_nodes=new sub_index_node*[4];
-	for(int i=0;i<4;i++){sub_nodes[i]=new sub_index_node[sub_map_size];}
-	for(int k=0;k<4;k++){
-		for(int i=0;sub_index[k].size()<sub_map_size&&i<sub_map_size*2;i++)//sub_index[k].size()
+
+	int j = 0, num = 0, temp_key = 0;
+	vector<uint32_t> temp_vec;
+	sub_info_comp temp_sub_info;
+	uint32_t begin, end;
+	for (int i = 0; i < 4; i++)
+	{
+		j = 0;
+		temp_vec.clear();
+		temp_key = sub_index_liner[i][j].sub_key;
+		temp_sub_info.sub_key = temp_key;
+		begin = 0;
+		end = 0;
+		for (; j < sub_index_liner[i].size(); j++)
 		{
-   		sgx_read_rand(reinterpret_cast<unsigned char*>(&j[k]), sizeof(int));
-		j[k]=j[k]%initialize_size;
-		uint32_t temp=sub_index_liner[k][j[k]].sub_key;
-		for(;j[k]>0&&temp==sub_index_liner[k][j[k]-1].sub_key;j[k]--);
-		auto its=sub_index_liner[k].begin()+j[k];
-		if(sub_index[k].find(temp)==sub_index[k].end())lru_index_add(k,its,sub_index_liner[k]);//int temps=j[k];
-		// for(;its->sub_key==temp&&its<sub_index_liner[k].end();its++,j[k]++);
+			if (sub_index_liner[i][j].sub_key == temp_key)
+			{
+				temp_vec.push_back(sub_index_liner[i][j].identifiers); // the identifiers of the same sub_key
+			}
+			else
+			{
+				// the first 4 bytes is the length of the uncompressed data
+				for (uint32_t t = 0, tmp = temp_vec.size(); t < 4; t++)
+				{
+					sub_identifiers[i].push_back(tmp & 0xff);
+					tmp >>= 8;
+				}
+				// if the length of the uncompressed data is less than COMPRESS_MIN, we don't compress it
+				if (temp_vec.size() > COMPRESS_MIN)
+				{
+					// compute the length of the compressed data
+					uint32_t comp_len = LZ4_compressBound(temp_vec.size() * 4);
+					sub_identifiers[i].resize(sub_identifiers[i].size() + comp_len + 4);
+
+					// lz4 compress
+					uint32_t comp_len2 = LZ4_compress_default((char *)temp_vec.data(), (char *)sub_identifiers[i].data() + begin + 8, temp_vec.size() * 4, comp_len);
+
+					// the second 4 bytes of begin is the length of the compressed data
+					for (int t = 0; t < 4; t++)
+					{
+						sub_identifiers[i][begin + 4 + t] = comp_len2 & 0xff;
+						comp_len2 >>= 8;
+					}
+					temp_sub_info.begin = begin;
+					begin += comp_len + 8; // begin is the index in the sub_identifiers[i]
+				}
+				else
+				{
+					// copy the uncompressed data to sub_identifiers[i]
+					sub_identifiers[i].resize(sub_identifiers[i].size() + temp_vec.size() * 4);
+					memcpy(sub_identifiers[i].data() + begin + 4, temp_vec.data(), temp_vec.size() * 4);
+
+					temp_sub_info.begin = begin;
+					begin += temp_vec.size() * 4 + 4;
+				}
+				temp_sub_info.sub_key = temp_key;
+				sub_linear_comp[i].emplace_back(temp_sub_info);
+
+				temp_key = sub_index_liner[i][j].sub_key;
+				temp_vec.clear();
+				j--;
+			}
+		}
+		// compress the last sub_key
+		if (!temp_vec.empty())
+		{
+			sub_linear_comp[i].emplace_back(temp_sub_info);
+			for (int t = 0, tmp = temp_vec.size(); t < 4; t++)
+			{
+				sub_identifiers[i].push_back(tmp & 0xff);
+				tmp >>= 8;
+			}
+			if (temp_vec.size() > COMPRESS_MIN)
+			{
+				printf("sub_identifiers[i].size()=%d\n", sub_identifiers[i].size());
+				uint32_t comp_len = LZ4_compressBound(temp_vec.size() * 4);
+				sub_identifiers[i].resize(sub_identifiers[i].size() + comp_len + 4);
+				uint32_t comp_len2 = LZ4_compress_default((char *)temp_vec.data(), (char *)sub_identifiers[i].data() + begin + 8, temp_vec.size() * 4, comp_len);
+				for (int t = 0; t < 4; t++)
+				{
+					sub_identifiers[i][begin + 4 + t] = comp_len2 & 0xff;
+					comp_len2 >>= 8;
+				}
+				temp_sub_info.begin = begin;
+			}
+			else
+			{
+				sub_identifiers[i].resize(sub_identifiers[i].size() + temp_vec.size() * 4);
+				memcpy(sub_identifiers[i].data() + begin + 4, temp_vec.data(), temp_vec.size() * 4);
+				temp_sub_info.begin = begin;
+				begin += temp_vec.size() * 4;
+			}
 		}
 	}
-	//printf sub_index size
-	for(int i=0;i<4;i++){
-		printf("sub_index%d size:%d\n",i,sub_index[i].size());
+
+	int index[4] = {0};
+	// for(int i=0;i<4;i++)j[i]=sub_index_liner[i][0];
+	printf("subsize:%d\n", sub_map_size);
+	sub_nodes = new sub_index_node *[4];
+	for (int i = 0; i < 4; i++)
+	{
+		sub_nodes[i] = new sub_index_node[sub_map_size];
+	}
+	// randomly select node to insert the sub_index
+	for (int k = 0; k < 4; k++)
+	{
+		for (int i = 0; sub_index[k].size() < sub_map_size && i < sub_map_size * 2; i++) // sub_index[k].size()
+		{
+			sgx_read_rand(reinterpret_cast<unsigned char *>(&index[k]), sizeof(int));
+			index[k] = index[k] % sub_linear_comp[k].size();
+			uint32_t temp = sub_linear_comp[k][index[k]].sub_key;
+			// for(;index[k]>0&&temp==sub_index_liner[k][index[k]-1].sub_key;index[k]--);
+			auto its = sub_linear_comp[k].begin() + index[k];
+			if (sub_index[k].find(temp) == sub_index[k].end())
+				lru_index_add(k, its); // int temps=index[k];
+									   // for(;its->sub_key==temp&&its<sub_index_liner[k].end();its++,index[k]++);
+		}
+	}
+	// printf sub_index size
+	for (int i = 0; i < 4; i++)
+	{
+		printf("sub_index%d size:%d\n", i, sub_index[i].size());
 	}
 }
 void containers::get_test_pool()
 {
-	uint64_t temp_key[2]={0};
-	uint32_t begin=0,index=0;//begin:the first index of test
-	uint32_t skip=1;//skip query
-	uint32_t range=initialize_size;//range query
-   	sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));
+	uint64_t temp_key[2] = {0};
+	uint32_t begin = 0, index = 0;	  // begin:the first index of test
+	uint32_t skip = 1;				  // skip query
+	uint32_t range = initialize_size; // range query
+	// sgx_read_rand(reinterpret_cast<unsigned char *>(&begin), sizeof(begin));
 
-	//for temporal Locality
+	// for temporal Locality
 	vector<uint32_t> local_list;
 	uint32_t temp;
-	for(int i=0;i<100;i++){
-   	sgx_read_rand(reinterpret_cast<unsigned char*>(&temp), sizeof(temp));
-	local_list.push_back(temp%initialize_size);}
-
-	for(int i=0;i<initialize_size;i++)
+	for (int i = 0; i < 100; i++)
 	{
-		if(test_pool.size()>=test_size)
+		sgx_read_rand(reinterpret_cast<unsigned char *>(&temp), sizeof(temp));
+		local_list.push_back(temp % initialize_size);
+	}
+
+	for (int i = 0; i < initialize_size; i++)
+	{
+		if (test_pool.size() >= test_size)
 		{
 			return;
 		}
-		index=(begin+(i*skip)%range);
-		if(i%20==0) {sgx_read_rand(reinterpret_cast<unsigned char*>(&begin), sizeof(begin));}//space locality
-		sgx_read_rand(reinterpret_cast<unsigned char*>(&index), sizeof(index));//rand query
-		// index=local_list[index%local_list.size()];//temporal locality
-		index=index%initialize_size;
-		auto it=full_index[index];
-		temp_key[0]=it.fullkey[0];
-		temp_key[1]=it.fullkey[1];
-		int h=0,y=0;
-		uint64_t t=1;
-		unsigned char rand[3]={0};
-		sgx_read_rand(rand,2);
-		h=rand[0]%3;
-		for(int i=0;i<h;i++)
+		index = (begin + (i * skip) % range);
+		if (i % 20 == 0)
 		{
-	  		y=rand[i+1]%64;
-			temp_key[0]=temp_key[0]^(t<<y);
-			temp_key[1]=temp_key[1]^(t<<y);
+			// sgx_read_rand(reinterpret_cast<unsigned char *>(&begin), sizeof(begin));
+		} // space locality
+		// sgx_read_rand(reinterpret_cast<unsigned char *>(&index), sizeof(index)); // rand query
+		// index=local_list[index%local_list.size()];//temporal locality
+		index = index % initialize_size;
+		auto it = full_index[index];
+		temp_key[0] = it.fullkey[0];
+		temp_key[1] = it.fullkey[1];
+		int h = 0, y = 0;
+		uint64_t t = 1;
+		unsigned char rand[3] = {0};
+		sgx_read_rand(rand, 2);
+		// h = rand[0] % 3;
+		for (int i = 0; i < h; i++)
+		{
+			y = rand[i + 1] % 64;
+			temp_key[0] = temp_key[0] ^ (t << y);
+			temp_key[1] = temp_key[1] ^ (t << y);
 		}
-		test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
+		test_pool.insert(pair<uint64_t, uint64_t>(temp_key[0], temp_key[1]));
 	}
 }
 std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 {
-	uint64_t* total_time_now=new uint64_t[1];
-	long long total_begin_time=0,total_end_time=0;
+	uint64_t *total_time_now = new uint64_t[1];
+	long long total_begin_time = 0, total_end_time = 0;
 	ocall_get_timeNow(total_time_now);
-	total_begin_time=*total_time_now;
+	total_begin_time = *total_time_now;
 
 	unordered_set<uint32_t> candidate;
 	candidate.clear();
 	candidate.reserve(5000);
-	uint64_t tmpquery[2]={0};
-	tmpquery[0]=query[0];
-	tmpquery[1]=query[1];
-	uint32_t sub[4]={0};
-	get_sub_fingerprint(sub,tmpquery);
+	uint64_t tmpquery[2] = {0};
+	tmpquery[0] = query[0];
+	tmpquery[1] = query[1];
+	uint32_t sub[4] = {0};
+	get_sub_fingerprint(sub, tmpquery);
 
-	static uint64_t bloomHit=0;static uint64_t bolomMiss=0;
-	uint32_t tmpsub1,tmpsub2,tmpsub3,tmpsub4=0;
+	uint32_t *out_tmp = out;
+	static uint64_t bloomHit = 0;
+	static uint64_t bloomMiss = 0;
+	uint32_t tmpsub1, tmpsub2, tmpsub3, tmpsub4 = 0;
 	vector<uint32_t> temp;
-	static int loopBegin=0;static int times=0;static int line_times=0;
-	uint64_t infoFullkey[2] ;uint32_t subInfo[4];
-	//tsl::hopscotch_map<uint32_t, std::vector<uint32_t>>::iterator got;
+	static int loopBegin = 0;
+	static int times = 0;
+	static int line_times = 0;
+	uint64_t infoFullkey[2];
+	uint32_t subInfo[4];
+	// tsl::hopscotch_map<uint32_t, std::vector<uint32_t>>::iterator got;
 	unordered_map<uint32_t, std::vector<uint32_t>>::iterator got;
-	vector<sub_index_node*> map2liner;
+	vector<sub_index_node *> map2liner;
 	// vector<uint32_t> miss_sub;
-	vector<vector<sub_information>::iterator> miss_sub;
-	static int num=0;
-	static int hitmap=0;static int hitliner=0;
-	static int mapsize=0;static int linersize=0;
-	uint64_t* time=new uint64_t[1];
-	long long begin_time,end_time;
-	for(int i=0;i<4;i++){
+	vector<vector<sub_info_comp>::iterator> miss_sub;
+	static int hitmap = 0;
+	static int hitliner = 0;
+	static int mapsize = 0;
+	static int linersize = 0;
+	uint64_t *time = new uint64_t[1];
+	long long begin_time, end_time;
+	for (int i = 0; i < 4; i++)
+	{
 		ocall_get_timeNow(time);
-		begin_time=*time;
-		for(auto& its:C_0_TO_subhammdis[i])
+		begin_time = *time;
+		for (auto &its : C_0_TO_subhammdis[i])
 		{
-			tmpsub1=sub[i]^its;
-		//	LOGGER("SUB FP INFO: %u %u %u %u",tmpsub1,tmpsub2,tmpsub3,tmpsub4);
-		//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
+			tmpsub1 = sub[i] ^ its;
+			//	LOGGER("SUB FP INFO: %u %u %u %u",tmpsub1,tmpsub2,tmpsub3,tmpsub4);
+			//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 
-			if(filters[i].contains(tmpsub1)){	
-			auto it = sub_index[i].find(tmpsub1);times++;bloomHit++;
-			if(it!=sub_index[i].end())
-			{	
-				hitmap++;
-				// temp=it->second;
-				// for(auto& got:temp){
-				// candidate.insert(got);
-				// }
-				map2liner.push_back(it->second);
-				lru_index_visit(i,it->second);
-			}else{
-				// sub_information*its;
-				// for(its=sub_index_liner[i];its<sub_index_liner[i]+initialize_size,its++){
-				// 	if(its->sub_key==tmpsub1){
-				// 		++hitliner;
-				// 		lru_index_add(i,sub_index[i],its);
-				// 		break;
-				// 	}
-				// }
-				auto its = std::lower_bound(sub_index_liner[i].begin(),sub_index_liner[i].end(), tmpsub1,compareFirst);
-				if(its!=sub_index_liner[i].end()&&its->sub_key==tmpsub1){
-					++hitliner;
-					lru_index_add(i,its,sub_index_liner[i]);
-					miss_sub.push_back(its);
+			if (filters[i].contains(tmpsub1))
+			{
+				auto it = sub_index[i].find(tmpsub1);
+				times++;
+				bloomHit++;
+				if (it != sub_index[i].end())
+				{
+					hitmap++;
+					map2liner.push_back(it->second);
+					lru_index_visit(i, it->second); // visit lru
 				}
-				// miss_sub.push_back(tmpsub1);
-				bolomMiss++;}
+				else
+				{
+					auto its = std::lower_bound(sub_linear_comp[i].begin(), sub_linear_comp[i].end(), tmpsub1, compareFirst_comp);
+					if (its != sub_linear_comp[i].end() && its->sub_key == tmpsub1)
+					{
+						++hitliner;
+						lru_index_add(i, its); // add to lru
+						miss_sub.push_back(its);
+					}
+					else
+						bloomMiss++;
+				}
 			}
 		}
 		ocall_get_timeNow(time);
-		end_time=*time;
-		find_time+=end_time-begin_time;
+		end_time = *time;
+		find_time += end_time - begin_time;
 		ocall_get_timeNow(time);
-		begin_time=*time;
-		for(auto temp:map2liner){
-			uint32_t tempkey=temp->sub_key;num+=temp->sub_key;
-			// auto its=temp->liner_node;num+=its->identifiers;
-			for(auto& its:temp->identifiers){
-			candidate.emplace_hint(candidate.begin(),its);
+		begin_time = *time;
+		// the node finded by sub_map
+		for (auto temp : map2liner)
+		{
+			uint32_t tempkey = temp->sub_key;
+
+			// calculate the original size of the compressed data
+			uint32_t originalSize = 0, compressedSize = 0;
+			for (int t = 0; t < 4; t++)
+			{
+				originalSize += ((uint32_t)(sub_identifiers[i][temp->begin + t]) << (8 * t));
 			}
+			if (originalSize <= COMPRESS_MIN)
+			{
+				out_tmp = (uint32_t *)(sub_identifiers[i].data() + temp->begin + 4);
+			}
+			else
+			{
+				for (int t = 0; t < 4; t++)
+				{
+					compressedSize += ((uint32_t)(sub_identifiers[i][temp->begin + 4 + t]) << (8 * t));
+				}
+				// decompress
+				LZ4_decompress_safe((char *)sub_identifiers[i].data() + temp->begin + 8, (char *)out_tmp, compressedSize, originalSize * 4);
+			}
+			// get the identifiers of the subkey
+			for (int j = 0; j < originalSize; j++)
+			{
+				candidate.emplace_hint(candidate.begin(), out_tmp[j]);
+			}
+			out_tmp = out;
 		}
 		map2liner.clear();
-		for(int y=0;y<miss_sub.size();y+=1){//auto temp:miss_sub
-			auto its=miss_sub[y];
-			uint32_t temp=its->sub_key;
-			// auto temp=miss_sub[y];
-			// auto its = std::lower_bound(sub_index_liner[i], sub_index_liner[i]+initialize_size, temp,compareFirst);
-			// if(its!=sub_index_liner[i]+initialize_size&&its->sub_key==temp){
-			// 	++hitliner;
-			// 	lru_index_add(i,sub_index[i],its);
-			// }
-			for(;its<sub_index_liner[i].end()&&its->sub_key==temp;++its){
-			candidate.emplace_hint(candidate.begin(),its->identifiers);
-			num+=its->identifiers;linersize++;
+		// the node finded by linear list
+		for (int y = 0; y < miss_sub.size(); y += 1)
+		{
+			auto its = miss_sub[y];
+			uint32_t temp = its->sub_key;
+
+			// calculate the original size of the compressed data
+			uint32_t originalSize = 0, compressedSize = 0;
+			for (int t = 0; t < 4; t++)
+			{
+				originalSize += ((uint32_t)(sub_identifiers[i][its->begin + t]) << (8 * t));
 			}
+			if (originalSize <= COMPRESS_MIN)
+			{
+				out_tmp = (uint32_t *)(sub_identifiers[i].data() + its->begin + 4);
+			}
+			else
+			{
+				for (int t = 0; t < 4; t++)
+				{
+					compressedSize += ((uint32_t)(sub_identifiers[i][its->begin + 4 + t]) << (8 * t));
+				}
+				// decompress
+				LZ4_decompress_safe((char *)sub_identifiers[i].data() + its->begin + 8, (char *)out_tmp, compressedSize, originalSize * 4);
+			}
+			// get the identifiers of the subkey
+			for (int j = 0; j < originalSize; j++)
+			{
+				candidate.emplace_hint(candidate.begin(), out_tmp[j]);
+			}
+			out_tmp = out;
 		}
 		miss_sub.clear();
 		ocall_get_timeNow(time);
-		end_time=*time;
-		insert_time+=end_time-begin_time;
+		end_time = *time;
+		insert_time += end_time - begin_time;
 	}
-	// for(auto& its:this->C_0_TO_subhammdis[0])
-	// {
-	// 	tmpsub2=sub[1]^its;
-	// 	if(filters[1].contains(tmpsub2)){
-	// 	auto it = sub_index2.find(tmpsub2);times++;bloomHit++;
-	// 	if(it!=sub_index2.end())
-	// 	{	
-	// 		map2liner.push_back(it->second);
-	// 	}
-	// 	}else {
-	// 		miss_sub.push_back(tmpsub2);
-	// 		bolomMiss++;}
-	// }
-	// for(auto temp:miss_sub){hit++;
-	// 	auto its = std::lower_bound(sub_index_liner[0], sub_index_liner[0]+initialize_size, temp,compareFirst);
-	// 	for(;its->sub_key==temp&&its<sub_index_liner[0]+initialize_size;++its){
-	// 	candidate.insert(its->identifiers);}
-	// }
-	// miss_sub.clear();
-	// for(auto temp:map2liner){
-	// 	auto x=temp-1;
-	// 	for(;x>=0&&sub_index_liner[0][x].sub_key==sub_index_liner[0][temp-1].sub_key;--x){
-	// 	candidate.insert(sub_index_liner[0][x].identifiers);}
-	// 	}
-	// }
-	// map2liner.clear();
-	// for(auto& its:this->C_0_TO_subhammdis[0])
-	// {
-	// 	tmpsub3=sub[2]^its;
-	// 	if(filters[2].contains(tmpsub3)){
-	// 	auto it = sub_index3.find(tmpsub3);times++;bloomHit++;
-	// 	if(it!=sub_index3.end())
-	// 	{	
-	// 		temp=it->second;
-	// 		for(auto& got:temp){
-	// 		candidate.insert(got);
-	// 		}
-	// 	}
-	// 	}else bolomMiss++;
-	// }
-	// for(auto& its:this->C_0_TO_subhammdis[0])
-	// {
-	// 	tmpsub4=sub[3]^its;
-	// 	if(filters[3].contains(tmpsub4)){
-	// 	auto it = sub_index4.find(tmpsub4);times++;bloomHit++;
-	// 	if(it!=sub_index4.end())
-	// 	{	
-	// 		temp=it->second;times++;
-	// 		for(auto& got:temp){
-	// 		candidate.insert(got); 
-	// 		}
-	// 	}
-	// 	}else bolomMiss++;
-	// }
-	uint64_t cmp_hamm[2]={0};
-	uint64_t count=0;
-	// static uint32_t candiNum=0;candiNum+=candidate.size();
-	// printf("candiNum:%d\n",candiNum);
-	// printf("times1:%d times2 %d\n",line_times,times);
-	// printf("bloomHit:%lu bloomMiss:%lu\n",bloomHit,bolomMiss);
-	// printf("num%d\n",num);
+	uint64_t cmp_hamm[2] = {0};
+	uint64_t count = 0;
+	// printf("bloomHit:%lu bloomMiss:%lu\n",bloomHit,bloomMiss);
 	// printf("hitmap %d hitliner %d \n",hitmap,hitliner);
-	// num+=hitliner&mapsize&linersize&hitmap;
 	// printf("hitmap %d mapsize %d hitliner %d linersize %d \n",hitmap,mapsize,hitliner,linersize);
-	num+=hitliner&mapsize&linersize&hitmap;//candidate.reserve(num&0xf);
 	ocall_get_timeNow(time);
-	begin_time=*time;
+	begin_time = *time;
 	information got_out;
 	// tsl::hopscotch_map<uint32_t,information>::const_iterat/or got_out;
-	for(auto it = candidate.begin(); it != candidate.end();)
+	for (auto it = candidate.begin(); it != candidate.end();)
 	{
-		got_out=full_index[*it];
-		if(1)
+		got_out = full_index[*it];
+		if (1)
 		{
-			cmp_hamm[0]=query[0]^(got_out.fullkey[0]);
-			cmp_hamm[1]=query[1]^(got_out.fullkey[1]);
-			count=bitset<64>(cmp_hamm[0]).count()+bitset<64>(cmp_hamm[1]).count();
+			cmp_hamm[0] = query[0] ^ (got_out.fullkey[0]);
+			cmp_hamm[1] = query[1] ^ (got_out.fullkey[1]);
+			count = bitset<64>(cmp_hamm[0]).count() + bitset<64>(cmp_hamm[1]).count();
 			// count=0;
 			// while(cmp_hamm[0])
 			// {
@@ -492,19 +604,21 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 			// 	count+=cmp_hamm[1]&1ul;
 			// 	cmp_hamm[1]=cmp_hamm[1]>>1;
 			// }
-			if(count<=hammdist){
+			if (count <= hammdist)
+			{
 				successful_num++;
-				it++;}
-			else 
-				it=candidate.erase(it);
+				it++;
+			}
+			else
+				it = candidate.erase(it);
 		}
 	}
 	ocall_get_timeNow(time);
-	end_time=*time;
-	verify_time+=end_time-begin_time;
+	end_time = *time;
+	verify_time += end_time - begin_time;
 	ocall_get_timeNow(total_time_now);
-	total_end_time=*total_time_now;
-	total_time+=total_end_time-total_begin_time;
+	total_end_time = *total_time_now;
+	total_time += total_end_time - total_begin_time;
 	return std::move(candidate);
 }
 void containers::test()
@@ -522,111 +636,116 @@ void containers::test()
 	//------test insert new data to linear-list------
 	// for(int i=0;i<4;i++)this->insert_new_datamap(i);
 	printf("Test!\n");
-	uint64_t temp_key[2]={0};
+	uint64_t temp_key[2] = {0};
 
-	for(auto &itx : test_pool)
+	for (auto &itx : test_pool)
 	{
-		temp_key[0]=itx.first;
-		temp_key[1]=itx.second;
+		temp_key[0] = itx.first;
+		temp_key[1] = itx.second;
 		find_sim(temp_key);
 	}
-	total_time/=1e6;
-	find_time/=1e6;
-	insert_time/=1e6;
-	verify_time/=1e6;
-	//total时间（ms）， find：查询map和linear的时间，insert：插入到set<candidate>的时间，verify：验证candidate的时间
-	printf("total=time:%d,sum:%d, find-time:%d, insert-time:%d, verify-time:%d\n",total_time,find_time+insert_time+verify_time,find_time,insert_time,verify_time);
+	total_time /= 1e6;
+	find_time /= 1e6;
+	insert_time /= 1e6;
+	verify_time /= 1e6;
+	// total时间（ms）， find：查询map和linear的时间，insert：插入到set<candidate>的时间，verify：验证candidate的时间
+	printf("total=time:%d,sum:%d, find-time:%d, insert-time:%d, verify-time:%d\n", total_time, find_time + insert_time + verify_time, find_time, insert_time, verify_time);
 }
 void containers::changeHammingDist(uint64_t hammdist)
 {
-	if(hammdist==this->hammdist)return;
-	this->hammdist=hammdist;
+	if (hammdist == this->hammdist)
+		return;
+	this->hammdist = hammdist;
 	// this->sub_hammdist=hammdist/4;
-	for(int i=0;i<cont.sub_index_num;i++)sub_hammdist[i]=0;
-	for(int j=hammdist-sub_index_num+1;j>0;){//the sum of sub_hammdist is hammdist - sub_index_num + 1
-		for(int i=0;i<sub_index_num;i++)
+	for (int i = 0; i < cont.sub_index_num; i++)
+		sub_hammdist[i] = 0;
+	for (int j = hammdist - sub_index_num + 1; j > 0;)
+	{ // the sum of sub_hammdist is hammdist - sub_index_num + 1
+		for (int i = 0; i < sub_index_num; i++)
 		{
-			if(j<=0)break;
+			if (j <= 0)
+				break;
 			sub_hammdist[i]++;
 			j--;
 		}
 	}
-	for(int i=0;i<cont.sub_index_num;i++)
+	for (int i = 0; i < cont.sub_index_num; i++)
 	{
 		cont.C_0_TO_subhammdis[i].clear();
-		cont.prepare(cont.sub_hammdist[i],cont.C_0_TO_subhammdis[i]);
+		cont.prepare(cont.sub_hammdist[i], cont.C_0_TO_subhammdis[i]);
 	}
 	// this->prepare();
 }
-void containers::insert_fingerprint(pair<uint64_t,uint64_t>* data,uint32_t length){
-	uint64_t temp_key[2]={0};
-	uint32_t out_id=0;
-	uint32_t sub[4]={0};
-	information temp_information;
-	sub_information sub_info[4];
-	if(length>sub_map_size*5){//改成length>0，则测试直接insert线性表的时间
-		vector<sub_information> tmp_sub_vector[4] ;
-		for(int i=0;i<4;i++)tmp_sub_vector[i].reserve(length);
-		for(int i=0;i<length;i++)
-		{
-			temp_information.fullkey[0]=data[i].first;//temp_key[0];
-			temp_information.fullkey[1]=data[i].second;//temp_key[1];
-			temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
-			get_sub_fingerprint(sub,temp_key);
-			out_id=random_uuid()-1;
-			for(int j=0;j<4;j++){
-				filters[j].insert(sub[j]);
-				sub_info[j].sub_key=sub[j];
-				sub_info[j].identifiers=out_id;
-				tmp_sub_vector[j].push_back(sub_info[j]);
-				if(sub_index[j].find(sub[j])!=sub_index[j].end()){
-					sub_index[j][sub[j]]->identifiers.push_back(out_id);
-				}
-			}
-			full_index.push_back(temp_information);
-		}
+void containers::insert_fingerprint(pair<uint64_t, uint64_t> *data, uint32_t length)
+{
+	// uint64_t temp_key[2]={0};
+	// uint32_t out_id=0;
+	// uint32_t sub[4]={0};
+	// information temp_information;
+	// sub_information sub_info[4];
+	// if(length>sub_map_size*5){//改成length>0，则测试直接insert线性表的时间
+	// 	vector<sub_information> tmp_sub_vector[4] ;
+	// 	for(int i=0;i<4;i++)tmp_sub_vector[i].reserve(length);
+	// 	for(int i=0;i<length;i++)
+	// 	{
+	// 		temp_information.fullkey[0]=data[i].first;//temp_key[0];
+	// 		temp_information.fullkey[1]=data[i].second;//temp_key[1];
+	// 		temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
+	// 		get_sub_fingerprint(sub,temp_key);
+	// 		out_id=random_uuid()-1;
+	// 		for(int j=0;j<4;j++){
+	// 			filters[j].insert(sub[j]);
+	// 			sub_info[j].sub_key=sub[j];
+	// 			sub_info[j].identifiers=out_id;
+	// 			tmp_sub_vector[j].push_back(sub_info[j]);
+	// 			if(sub_index[j].find(sub[j])!=sub_index[j].end()){
+	// 				sub_index[j][sub[j]]->identifiers.push_back(out_id);
+	// 			}
+	// 		}
+	// 		full_index.push_back(temp_information);
+	// 	}
 
-		//sort and merge new elements
-		for(int j=0;j<4;j++){
-			std::sort(tmp_sub_vector[j].begin(),tmp_sub_vector[j].end(),customCompare);
-			sub_index_liner[j].reserve(sub_index_liner[j].size()+(length<1000?1000:length));
-			sub_index_liner[j].insert(sub_index_liner[j].end(), tmp_sub_vector[j].begin(), tmp_sub_vector[j].end());
-			// std::merge(cont.sub_index_liner[j].begin(),cont.sub_index_liner[j].end(),tmp_sub_vector[j].begin(),tmp_sub_vector[j].end(),std::back_inserter(cont.sub_index_liner[j]),customCompare);
-			std::inplace_merge(sub_index_liner[j].begin(), sub_index_liner[j].end()-tmp_sub_vector[j].size(), sub_index_liner[j].end(), customCompare);
-			initialize_size+=tmp_sub_vector[j].size();
-		}
-	}else{
-		for(int i=0;i<length;i++)
-		{
-			temp_information.fullkey[0]=data[i].first;//temp_key[0];
-			temp_information.fullkey[1]=data[i].second;//temp_key[1];
-			temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
-			get_sub_fingerprint(sub,temp_key);
-			out_id=random_uuid()-1;
-			for(int j=0;j<4;j++){
-				filters[j].insert(sub[j]);
-				insert_to_submap(j,sub[j],out_id);
-				
-				//直接插入sub-index，测试纯hashmap的insert时间,注释掉insert_to_submap
-				// if(sub_index[j].find(sub[j])!=sub_index[j].end())sub_index[j][sub[j]]->identifiers.push_back(out_id);
-				// else {
-				// 	sub_index_node* temp_node=new sub_index_node;
-				// 	sub_index[j][sub[j]]=temp_node;
-				// 	temp_node->identifiers.push_back(out_id);
-				// }
-			}
-			full_index.push_back(temp_information);
-		}
-	}
+	// 	//sort and merge new elements
+	// 	for(int j=0;j<4;j++){
+	// 		std::sort(tmp_sub_vector[j].begin(),tmp_sub_vector[j].end(),customCompare);
+	// 		sub_index_liner[j].reserve(sub_index_liner[j].size()+(length<1000?1000:length));
+	// 		sub_index_liner[j].insert(sub_index_liner[j].end(), tmp_sub_vector[j].begin(), tmp_sub_vector[j].end());
+	// 		// std::merge(cont.sub_index_liner[j].begin(),cont.sub_index_liner[j].end(),tmp_sub_vector[j].begin(),tmp_sub_vector[j].end(),std::back_inserter(cont.sub_index_liner[j]),customCompare);
+	// 		std::inplace_merge(sub_index_liner[j].begin(), sub_index_liner[j].end()-tmp_sub_vector[j].size(), sub_index_liner[j].end(), customCompare);
+	// 		initialize_size+=tmp_sub_vector[j].size();
+	// 	}
+	// }else{
+	// 	for(int i=0;i<length;i++)
+	// 	{
+	// 		temp_information.fullkey[0]=data[i].first;//temp_key[0];
+	// 		temp_information.fullkey[1]=data[i].second;//temp_key[1];
+	// 		temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
+	// 		get_sub_fingerprint(sub,temp_key);
+	// 		out_id=random_uuid()-1;
+	// 		for(int j=0;j<4;j++){
+	// 			filters[j].insert(sub[j]);
+	// 			insert_to_submap(j,sub[j],out_id);
+
+	// 			//直接插入sub-index，测试纯hashmap的insert时间,注释掉insert_to_submap
+	// 			// if(sub_index[j].find(sub[j])!=sub_index[j].end())sub_index[j][sub[j]]->identifiers.push_back(out_id);
+	// 			// else {
+	// 			// 	sub_index_node* temp_node=new sub_index_node;
+	// 			// 	sub_index[j][sub[j]]=temp_node;
+	// 			// 	temp_node->identifiers.push_back(out_id);
+	// 			// }
+	// 		}
+	// 		full_index.push_back(temp_information);
+	// 	}
+	// }
 }
 void init()
 {
 	printf("run code!\n");
-	for(int i=0;i<cont.sub_index_num;i++)
+	for (int i = 0; i < cont.sub_index_num; i++)
 	{
-		cont.prepare(cont.sub_hammdist[i],cont.C_0_TO_subhammdis[i]);
+		cont.prepare(cont.sub_hammdist[i], cont.C_0_TO_subhammdis[i]);
 	}
-	printf("c_o size: %d\n",cont.C_0_TO_subhammdis[0].size());
+	printf("c_o size: %d\n", cont.C_0_TO_subhammdis[0].size());
 	printf("Init!\n");
 	cont.initialize();
 	// cont.get_test_pool();
@@ -636,160 +755,187 @@ void init()
 void test_run()
 {
 	cont.test();
-	printf("Successfully found similar photos! successful_num=%d.\n",cont.successful_num);
+	printf("Successfully found similar photos! successful_num=%d.\n", cont.successful_num);
 }
-void init_after_send(){
+void init_after_send()
+{
 	cont.init_after_recv_data();
 	cont.get_test_pool();
-	printf("The full index entry is: %d \n",cont.full_index.size());
-	printf("The number of queries is: %d \n",cont.test_pool.size());
+	printf("The full index entry is: %d \n", cont.full_index.size());
+	printf("The number of queries is: %d \n", cont.test_pool.size());
 }
 
-void encall_send_data(void *dataptr,size_t len)
+void encall_send_data(void *dataptr, size_t len)
 {
 	// printf("The full index entry is: %d \n",cont.test_pool.size()-1);
-	std::pair<uint64_t, uint64_t>* data =  reinterpret_cast<std::pair<uint64_t, uint64_t>*>(dataptr);
+	std::pair<uint64_t, uint64_t> *data = reinterpret_cast<std::pair<uint64_t, uint64_t> *>(dataptr);
 	// sign_data.insert(sign_data.end(),data,data+len);
-	uint64_t temp_key[2]={0};
-	uint32_t out_id=0;
-	uint32_t sub[4]={0};
+	uint64_t temp_key[2] = {0};
+	uint32_t out_id = 0;
+	uint32_t sub[4] = {0};
 	information temp_information;
 	sub_information sub_info[4];
-	for(int i=0;i<len;i++){
-		//random_128(temp_key);
-		temp_information.fullkey[0]=data[i].first;//temp_key[0];
-		temp_information.fullkey[1]=data[i].second;//temp_key[1];
-		temp_key[0]=temp_information.fullkey[0];temp_key[1]=temp_information.fullkey[1];
-		cont.get_sub_fingerprint(sub,temp_key);
-		out_id=cont.random_uuid()-1;
-		for(int j=0;j<4;j++){
+	for (int i = 0; i < len; i++)
+	{
+		// random_128(temp_key);
+		temp_information.fullkey[0] = data[i].first;  // temp_key[0];
+		temp_information.fullkey[1] = data[i].second; // temp_key[1];
+		temp_key[0] = temp_information.fullkey[0];
+		temp_key[1] = temp_information.fullkey[1];
+		cont.get_sub_fingerprint(sub, temp_key);
+		out_id = cont.random_uuid() - 1;
+		for (int j = 0; j < 4; j++)
+		{
 			cont.filters[j].insert(sub[j]);
-			sub_info[j].sub_key=sub[j];
-			sub_info[j].identifiers=out_id;
+			sub_info[j].sub_key = sub[j];
+			sub_info[j].identifiers = out_id;
 			cont.sub_index_liner[j].push_back(sub_info[j]);
 		}
 		cont.full_index.push_back(temp_information);
 	}
 }
-void encall_send_targets(void *dataptr,size_t len)
+void encall_send_targets(void *dataptr, size_t len)
 {
-	//TODO: 暂时没有考虑targets发送；之后可以集成到send_data中，用一个vector<uint>同时保存data和targets
-	uint32_t* data =  reinterpret_cast<uint32_t*>(dataptr);
+	// TODO: 暂时没有考虑targets发送；之后可以集成到send_data中，用一个vector<uint>同时保存data和targets
+	uint32_t *data = reinterpret_cast<uint32_t *>(dataptr);
 	// targets_data.insert(targets_data.end(),data,data+len);
 }
-void encall_find_one(void *dataptr,uint32_t* res,uint64_t hammdist)
+void encall_find_one(void *dataptr, uint32_t *res, uint64_t hammdist)
 {
 	cont.changeHammingDist(hammdist);
 
-    EcallCrypto* cryptoObj = new EcallCrypto(CIPHER_TYPE, HASH_TYPE);
-    EVP_MD_CTX* mdCtx = EVP_MD_CTX_new(); 
-    EVP_CIPHER_CTX* cipherCtx_ = EVP_CIPHER_CTX_new();
-    uint8_t* sessionKey_=const_sessionKey;
-	
-	uint8_t* dataE =reinterpret_cast<uint8_t*>(dataptr);
+	EcallCrypto *cryptoObj = new EcallCrypto(CIPHER_TYPE, HASH_TYPE);
+	EVP_MD_CTX *mdCtx = EVP_MD_CTX_new();
+	EVP_CIPHER_CTX *cipherCtx_ = EVP_CIPHER_CTX_new();
+	uint8_t *sessionKey_ = const_sessionKey;
+
+	uint8_t *dataE = reinterpret_cast<uint8_t *>(dataptr);
 	int dataSize = 16;
-    cryptoObj->SessionKeyDec(cipherCtx_, dataE,
-    dataSize, sessionKey_,
-    dataE);
-	printf("nums%d\n",(uint64_t*)dataE[0]);
-	uint64_t* data =  reinterpret_cast<uint64_t*>(dataE);
-	std::unordered_set<uint32_t> res_set=cont.find_sim(data);
-	uint8_t* res_old=reinterpret_cast<uint8_t*>(res);
-	for(auto &it:res_set)
+	cryptoObj->SessionKeyDec(cipherCtx_, dataE,
+							 dataSize, sessionKey_,
+							 dataE);
+	printf("nums%d\n", (uint64_t *)dataE[0]);
+	uint64_t *data = reinterpret_cast<uint64_t *>(dataE);
+	std::unordered_set<uint32_t> res_set = cont.find_sim(data);
+	uint8_t *res_old = reinterpret_cast<uint8_t *>(res);
+	for (auto &it : res_set)
 	{
-		*res=it;
+		*res = it;
 		res++;
 	}
 	//*len=res_set.size();
-	cryptoObj->SessionKeyEnc(cipherCtx_,(uint8_t*)res_old,3000*4,sessionKey_,(uint8_t*)res_old);
-	printf("Successfully found  photos! successful_num=%d.\n",res_set.size());
-	//printf("%d",sign_data.size());
+	cryptoObj->SessionKeyEnc(cipherCtx_, (uint8_t *)res_old, 3000 * 4, sessionKey_, (uint8_t *)res_old);
+	printf("Successfully found  photos! successful_num=%d.\n", res_set.size());
+	// printf("%d",sign_data.size());
 }
-void encall_find_batch(void *dataptr,uint32_t* res,uint32_t len,uint32_t len_res,uint64_t hammdist){
+void encall_find_batch(void *dataptr, uint32_t *res, uint32_t len, uint32_t len_res, uint64_t hammdist)
+{
 	cont.changeHammingDist(hammdist);
 
-	EcallCrypto* cryptoObj = new EcallCrypto(CIPHER_TYPE, HASH_TYPE);
-    EVP_MD_CTX* mdCtx = EVP_MD_CTX_new(); 
-    EVP_CIPHER_CTX* cipherCtx_ = EVP_CIPHER_CTX_new();
-    uint8_t* sessionKey_=const_sessionKey;
-	uint8_t* dataE =reinterpret_cast<uint8_t*>(dataptr);
-	int dataSize = sizeof(uint64_t)*len*2;
-    cryptoObj->SessionKeyDec(cipherCtx_, dataE,
-    dataSize, sessionKey_,
-    dataE);
-	uint8_t* res_old=reinterpret_cast<uint8_t*>(res);
+	EcallCrypto *cryptoObj = new EcallCrypto(CIPHER_TYPE, HASH_TYPE);
+	EVP_MD_CTX *mdCtx = EVP_MD_CTX_new();
+	EVP_CIPHER_CTX *cipherCtx_ = EVP_CIPHER_CTX_new();
+	uint8_t *sessionKey_ = const_sessionKey;
+	uint8_t *dataE = reinterpret_cast<uint8_t *>(dataptr);
+	int dataSize = sizeof(uint64_t) * len * 2;
+	cryptoObj->SessionKeyDec(cipherCtx_, dataE,
+							 dataSize, sessionKey_,
+							 dataE);
+	uint8_t *res_old = reinterpret_cast<uint8_t *>(res);
 	Query_batch_t query;
-	query.sendData=res;
-	*(query.sendData)=len;
-	query.index=query.sendData+sizeof(uint32_t);
-	query.dataBuffer=query.sendData+sizeof(uint32_t)*(len+1);
-	uint64_t* data =  reinterpret_cast<uint64_t*>(dataE);
+	query.sendData = res;
+	*(query.sendData) = len;
+	query.index = query.sendData + sizeof(uint32_t);
+	query.dataBuffer = query.sendData + sizeof(uint32_t) * (len + 1);
+	uint64_t *data = reinterpret_cast<uint64_t *>(dataE);
 	uint64_t temp2[2];
-	printf("query len=%d\n",len);
-	for(int i=0;i<len;i++){
-		temp2[0]=data[2*i];temp2[1]=data[2*i+1];
-		unordered_set<uint32_t> res_set=cont.find_sim(temp2);
-		query.index[i]=res_set.size();
-		//printf("res_set.size()=%d\n",res_set.size());
-		for(auto &it:res_set)
+	printf("query len=%d\n", len);
+	for (int i = 0; i < len; i++)
+	{
+		temp2[0] = data[2 * i];
+		temp2[1] = data[2 * i + 1];
+		unordered_set<uint32_t> res_set = cont.find_sim(temp2);
+		query.index[i] = res_set.size();
+		// printf("res_set.size()=%d\n",res_set.size());
+		for (auto &it : res_set)
 		{
-			*(query.dataBuffer)=it;
+			*(query.dataBuffer) = it;
 			query.dataBuffer++;
 		}
 	}
 
-	printf("successful_num=%d\n",cont.successful_num);
+	printf("successful_num=%d\n", cont.successful_num);
 	//*len=res_set.size();
-	cryptoObj->SessionKeyEnc(cipherCtx_,(uint8_t*)res_old,QUERY_SIZE*sizeof(uint32_t)*len,sessionKey_,(uint8_t*)res_old);
-	//printf("Successfully found  photos! successful_num=%d.\n",res_set.size());
-	printf("%d",sign_data.size());
+	cryptoObj->SessionKeyEnc(cipherCtx_, (uint8_t *)res_old, QUERY_SIZE * sizeof(uint32_t) * len, sessionKey_, (uint8_t *)res_old);
+	// printf("Successfully found  photos! successful_num=%d.\n",res_set.size());
+	printf("%d", sign_data.size());
 }
-//move the visited node to the tail of the list
-void containers::lru_index_visit(int sub_i,sub_index_node* node){
-	//if node->pre==this, the node is not in LRU list, return
-	if(node->pre==nullptr||node->pre==new_data_head[sub_i])return;
-	if(node==lru_n[sub_i].index_tail)return;	//if the node is the tail of the list,return
-	//move the node to the tail of the index list
-	node->next->pre=node->pre;
-	node->pre->next=node->next;
-	node->pre=lru_n[sub_i].index_tail;
-	lru_n[sub_i].index_tail->next=node;
-	lru_n[sub_i].index_tail=node;
+
+// move the visited node to the tail of the list
+void containers::lru_index_visit(int sub_i, sub_index_node *node)
+{
+	// if node->pre==this, the node is not in LRU list, return
+	if (node->pre == nullptr || node->pre == new_data_head[sub_i])
+		return;
+	// if the node is the tail of the list,return
+	if (node == lru_n[sub_i].index_tail)
+		return;
+
+	// move the node to the tail of the index list
+	node->next->pre = node->pre;
+	node->pre->next = node->next;
+	node->pre = lru_n[sub_i].index_tail;
+	lru_n[sub_i].index_tail->next = node;
+	lru_n[sub_i].index_tail = node;
 };
-//add the node to the tail of the list
-void containers::lru_index_add(int sub_i,vector<sub_information>::iterator node_liner,vector<sub_information>& sub_linear){
-	//if the size of the index list is larger than the max size,remove the first node
-	sub_index_node* remove_node = nullptr;
-	if(lru_n[sub_i].index_size >= lru_n[sub_i].map_size){
+
+// add the node to the tail of the list
+void containers::lru_index_add(int sub_i, vector<sub_info_comp>::iterator node_liner)
+{
+	// if the size of the index list is larger than the max size,remove the first node
+	sub_index_node *remove_node = nullptr;
+	if (lru_n[sub_i].index_size >= lru_n[sub_i].map_size)
+	{
 		remove_node = lru_n[sub_i].index_head->next;
-		sub_index_node* first = remove_node->next;
+		sub_index_node *first = remove_node->next;
 		lru_n[sub_i].index_head->next = first;
 		first->pre = lru_n[sub_i].index_head;
-		auto tmp=sub_index[sub_i].find(remove_node->sub_key);
+		auto tmp = sub_index[sub_i].find(remove_node->sub_key);
 
-		//if tmp is not in the new_data_head,remove it from the map
-		if(tmp!=sub_index[sub_i].end()&&tmp->second->pre == lru_n[sub_i].index_head)sub_index[sub_i].erase(remove_node->sub_key);
-		remove_node->pre = nullptr;remove_node->next=nullptr;
-	}else{ lru_n[sub_i].index_size++; }
-
-	//add node to the tail of the LRU list
-	sub_index_node* node=nullptr;
-	if(remove_node==nullptr) node = &cont.sub_nodes[sub_i][lru_n[sub_i].index_size-1];//new sub_index_node{node_liner->sub_key,node_liner,nullptr,nullptr};
-	else node = remove_node;
-	node->sub_key = node_liner->sub_key;
-	// node->liner_node=node_liner;
-	node->identifiers.clear();
-	for(;node_liner!=sub_linear.end()&&node_liner->sub_key==node->sub_key;node_liner++){
-		node->identifiers.push_back(node_liner->identifiers);
+		// if tmp is not in the new_data_head,remove it from the map
+		if (tmp != sub_index[sub_i].end() && tmp->second->pre == lru_n[sub_i].index_head)
+			sub_index[sub_i].erase(remove_node->sub_key);
+		remove_node->pre = nullptr;
+		remove_node->next = nullptr;
 	}
-	node->next=nullptr;node->pre=nullptr;
-	sub_index[sub_i][node->sub_key]=node;
-	
-	//move the node to the tail of the LRU list
-	lru_n[sub_i].index_tail->next=node;
-	node->pre=lru_n[sub_i].index_tail;
-	lru_n[sub_i].index_tail=node;
+	else
+	{
+		lru_n[sub_i].index_size++;
+	}
+
+	// add node to the tail of the LRU list
+	sub_index_node *node = nullptr;
+	if (remove_node == nullptr)
+		node = &cont.sub_nodes[sub_i][lru_n[sub_i].index_size - 1]; // new sub_index_node{node_liner->sub_key,node_liner,nullptr,nullptr};
+	else
+		node = remove_node;
+
+	// change the sub_key and begin of the node
+	node->sub_key = node_liner->sub_key;
+	node->begin = node_liner->begin;
+
+	node->next = nullptr;
+	node->pre = nullptr;
+	sub_index[sub_i][node->sub_key] = node;
+
+	// move the node to the tail of the LRU list
+	lru_n[sub_i].index_tail->next = node;
+	node->pre = lru_n[sub_i].index_tail;
+	lru_n[sub_i].index_tail = node;
 };
+
+// TODO：insert functions，ignored
+/*
 //add the node in the new_data_head list to the linear list
 void containers::insert_new_datamap(int sub_i){
 	vector<sub_information> tmp_sub_vector;
@@ -903,3 +1049,5 @@ void containers::change_sub_map(int sub_i){
 		sub_nodes[sub_i] = new_sub_nodes;
 	}
 }
+
+*/

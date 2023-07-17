@@ -20,7 +20,8 @@ void read_data(std::string file_name,std::vector<std::pair<uint64_t,uint64_t>> &
     while (data.size()<DATA_LEN&&input.read(reinterpret_cast<char*>(&high), sizeof(high)) && input.read(reinterpret_cast<char*>(&low), sizeof(low))) {
         data.emplace_back(high,low);//1281167
 	    input.read(reinterpret_cast<char*>(&target),sizeof(target));
-	    input.read(reinterpret_cast<char*>(&target),sizeof(target));//the 512w dataSet's target is 64 bit
+        //the 512w dataSet's target is 64 bit, the 128w dataSet's target is 32 bit
+	    input.read(reinterpret_cast<char*>(&target),sizeof(target));
 	    data_target.emplace_back(target);
     }
     input.close();
