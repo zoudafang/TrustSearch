@@ -1,8 +1,11 @@
 
 
 
-数据集：1281167，结构为[64bit key,64not key,32bit target]
+数据集:1281167，结构为[64bit key,64not key,32bit target]
        5124668，结构为[64bit key,64not key,64bit target]
+        图片集合:共1000个类，128w中每个类1300张图片，512w中每个类5200张图片，但是观察到同一个类中的图片
+        特征值距离不一定小于8，平均每次查询可以获得2000张相似图片。
+        另外：存在部分特征值，数据集中不存在其他特征值与它相似，用它查询只能获得1个结果。（神经网络训练误差？读取数据集错误？）
 
 分支：
     lru_lz4:混合linear和map，采用lru数据迁移，lz4压缩sub-index,包括bloom filter
@@ -37,3 +40,4 @@ lru：
 备注：
 1. bloom filter的parameters.false_positive_probability影响filter的大小和查询精确度，在当前lru下，0.3测试是最佳的
 2. 倾斜分区似乎用处不大，数据分布相对均匀，就算使用随机划分分区的方法，查询效率变化不大
+3. 查询效率对内存敏感，比如information或sub_information增加一个uint32字段，则查询效率会相应降低
