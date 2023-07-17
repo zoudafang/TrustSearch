@@ -324,7 +324,6 @@ void containers::init_after_recv_data()
 		// compress the last sub_key
 		if (!temp_vec.empty())
 		{
-			sub_linear_comp[i].emplace_back(temp_sub_info);
 			for (int t = 0, tmp = temp_vec.size(); t < 4; t++)
 			{
 				sub_identifiers[i].push_back(tmp & 0xff);
@@ -342,12 +341,14 @@ void containers::init_after_recv_data()
 					comp_len2 >>= 8;
 				}
 				temp_sub_info.begin = begin;
+				sub_linear_comp[i].emplace_back(temp_sub_info);
 			}
 			else
 			{
 				sub_identifiers[i].resize(sub_identifiers[i].size() + temp_vec.size() * 4);
 				memcpy(sub_identifiers[i].data() + begin + 4, temp_vec.data(), temp_vec.size() * 4);
 				temp_sub_info.begin = begin;
+				sub_linear_comp[i].emplace_back(temp_sub_info);
 				begin += temp_vec.size() * 4;
 			}
 		}
@@ -409,8 +410,8 @@ void containers::get_test_pool()
 		if (i % 20 == 0)
 		{
 			// sgx_read_rand(reinterpret_cast<unsigned char *>(&begin), sizeof(begin));
-		} // space locality
-		// sgx_read_rand(reinterpret_cast<unsigned char *>(&index), sizeof(index)); // rand query
+		}																		 // space locality
+		sgx_read_rand(reinterpret_cast<unsigned char *>(&index), sizeof(index)); // rand query
 		// index=local_list[index%local_list.size()];//temporal locality
 		index = index % initialize_size;
 		auto it = full_index[index];
