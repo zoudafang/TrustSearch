@@ -24,7 +24,7 @@
     1.1 对于naive_multiIndex，压缩可能减少1-2s查询；对于lru，压缩似乎没有太高的提升？0.1左右
 
 lru：
-0. 流程：init（初始化bloom filter等），encall_send（发送全部数据到enclave中），
+0. 流程：init（初始化bloom filter等），ecall_send（发送全部数据到enclave中），
         init_after_send_data（接收完所有数据后，linear list进行sort，compress；插入sub_map）
 
 1. 分为sub_map和sub_linear, 其中sub_linear又拆分为sub_keys和sub_identifiers两个linear list（这里的sub_keys等 只是一个名称代表，不一定是代码中的name）

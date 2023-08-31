@@ -123,9 +123,9 @@ void ServerOptThread::Run(SSL* clientSSL) {
             printf("dataSize:%d,type%d\n",sendBuf.header->dataSize,sendBuf.header->messageType);
             uint64_t* temp=(uint64_t*)sendBuf.dataBuffer;
             testFull[0]=temp[0];testFull[1]=temp[1];
-            //encall to find the answer of the query
+            //ecall to find the answer of the query
             uint64_t hammdist=sendBuf.header->hammdist;
-            sgx_status_t t= encall_find_one(global_eid,testFull,resData,hammdist);
+            sgx_status_t t= ecall_find_one(global_eid,testFull,resData,hammdist);
             printf("len:%d\n",t);
             uint32_t *resData2=new uint32_t[*len];
             for(int i=0;i<*len;i++)
@@ -146,13 +146,13 @@ void ServerOptThread::Run(SSL* clientSSL) {
             memcpy(testFull,temp,dataLen*2*sizeof(uint64_t));
             Query_batch_t queryBatch;
             queryBatch.sendData=new uint32_t[dataLen*QUERY_SIZE];
-            //encall to find the answer of the query
+            //ecall to find the answer of the query
             int res_len=dataLen*QUERY_SIZE;
             
             std::chrono::steady_clock::time_point startTime2, endTime2;
             std::chrono::duration<double> duration2;
             startTime2 = std::chrono::steady_clock::now(); // 记录开始时间
-            sgx_status_t t= encall_find_batch(global_eid,testFull,queryBatch.sendData,dataLen,res_len,hammdist);
+            sgx_status_t t= ecall_find_batch(global_eid,testFull,queryBatch.sendData,dataLen,res_len,hammdist);
             
             endTime2 = std::chrono::steady_clock::now();
             duration2 = endTime2 - startTime2; // 计算持续时间
