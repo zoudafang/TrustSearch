@@ -33,7 +33,8 @@ extern "C"
 {
 #endif
 
-    static const uint32_t COMPRESS_MIN = 5;
+    static const uint32_t COMPRESS_MIN = 500;        // the min count of uint32 to be compressed, 用于压缩排序后的数组，小于MIN则不压缩
+    static const uint32_t COMPRESS_MIN_UNSORT = 100; // the min count of uint32，用于压缩未sort的数组，小于MIN-UNSORT则不压缩
     /**
      * Returns the size required to compress a sequence of |length| ints,
      * each compressed with |bits| bits
