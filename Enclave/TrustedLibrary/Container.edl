@@ -7,7 +7,9 @@ enclave {
         public void test_run(void);
         public void init_test_pool(void);
         public void encall_send_data([in,count=len,size=16] void* dataptr,size_t len);
-        public void encall_send_targets([in,count=len,size=4] void* dataptr,size_t len);
+        public void encall_send_targets([in,count=len,size=4] void* dataptr,size_t len);   
+        public void encall_send_query([in,count=len,size=16] void* dataptr,size_t len);
+        public void encall_send_qtargets([in,count=len,size=4] void* dataptr,size_t len);
         public void encall_find_one([in,count=2,size=8]void *dataptr,[out,size=4,count=3000] uint32_t* res,uint64_t hammdist);
         public void encall_find_batch([in,count=len,size=16]void *dataptr,[out,size=4,count=res_len] uint32_t* res,uint32_t len,uint32_t res_len,uint64_t hammdist);
     };

@@ -21,6 +21,7 @@ uint64_t containers::hammdist = 8;
 uint64_t containers::sub_index_num = 4;
 uint32_t containers::test_size = 1000;
 uint32_t containers::initialize_size = 0;
+uint32_t hash_seed[4]{0x12345678, 0x23456789, 0x34567890, 0x45678901};
 
 // void log(const char *file_name, const char *function_name, size_t line, const char *fmt, ...) {
 // #ifdef DEBUG
@@ -184,8 +185,8 @@ void containers::initialize()
 	// full_index.reserve(initialize_size/500);
 	sub_information sub_info[4];
 	bloom_parameters parameters;
-	parameters.projected_element_count = test_data_len; // initialize_size; // 预计插入initialize_size个元素
-	parameters.false_positive_probability = 0.01;		// 期望的误判率为0.1
+	parameters.projected_element_count = 0;		 // initialize_size; // 预计插入initialize_size个元素
+	parameters.false_positive_probability = 0.1; // 期望的误判率为0.1
 	parameters.random_seed = 0xA5A5A5A5;
 	parameters.compute_optimal_parameters(); // 计算最优参数
 	for (int i = 0; i < 4; i++)
@@ -239,6 +240,25 @@ void containers::get_test_pool()
 	// 	}
 	// 	test_pool.insert(pair<uint64_t,uint64_t>(temp_key[0],temp_key[1]));
 	// }
+	uint32_t sum = 0;
+	// for (int i = 0; i < tmp_test_pool.size(); i++)
+	// {
+	// 	if (tmp_test_pool[i] != full_index[i])
+	// 	{
+	// 		sum++;
+	// 	}
+	// }
+	uint32_t index1 = 0;
+	uint32_t end = tmp_test_pool.size();
+	while (test_pool.size() < test_size && end > 0)
+	{
+		sgx_read_rand(reinterpret_cast<unsigned char *>(&index1), sizeof(index1));
+		index1 %= end;
+		test_pool.emplace_back(tmp_test_pool[index1]);
+		auto tmp = tmp_test_pool[index1];
+		tmp_test_pool[index1] = tmp_test_pool[end - 1];
+		end--;
+	}
 
 	uint64_t temp_key[2] = {0};
 	uint32_t begin = 0, index = 0;	  // begin:the first index of test
@@ -281,7 +301,7 @@ void containers::get_test_pool()
 			temp_key[0] = temp_key[0] ^ (t << y);
 			temp_key[1] = temp_key[1] ^ (t << y);
 		}
-		test_pool.insert(pair<uint64_t, uint64_t>(temp_key[0], temp_key[1]));
+		test_pool.push_back(pair<uint64_t, uint64_t>(temp_key[0], temp_key[1]));
 	}
 }
 std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
@@ -305,6 +325,7 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 	uint64_t infoFullkey[2];
 	uint32_t subInfo[4];
 	uint32_t *tmp_out;
+	uint32_t sub_key_I[2], out_key[1];
 	// tsl::hopscotch_map<uint32_t, std::vector<uint32_t>>::iterator got;
 	unordered_map<uint32_t, std::vector<uint32_t>>::iterator got;
 	for (auto &its : this->C_0_TO_subhammdis[0])
@@ -317,28 +338,34 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 		//	LOGGER("SUB FP INFO: %u %u %u %u",tmpsub1,tmpsub2,tmpsub3,tmpsub4);
 		//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 		// printf("num%d\n",candidate.size());
+		sub_key_I[0] = tmpsub1, sub_key_I[1] = 0;
+		// MurmurHash3_x86_32(sub_key_I, 8, hash_seed[0], out_key);
 		// if (filters[0].contains(tmpsub1))
 		{
-			auto it = comp_sub_index1.find(tmpsub1); // times++;bloomHit++;
-			if (it != comp_sub_index1.end())		 // 如果是compress后的，用comp_sub_index1 + for_uncompress；不然用sub_index1 + for(auto& got:temp){
-			{										 // valid_query++;
-				// temp = it->second;
-				// for (auto &got : temp)
+			auto it = sub_index1.find(tmpsub1); // times++;bloomHit++;
+			if (it != sub_index1.end())			// 如果是compress后的，用comp_sub_index1 + for_uncompress；不然用sub_index1 + for(auto& got:temp){
+			{
+				valid_query++;
+				temp = it->second;
+				for (auto &got : temp)
+				{
+					candidate.insert(got);
+				}
+				// if (it->second.second <= COMPRESS_MIN)
 				// {
-				// 	candidate.insert(got);
+				// 	tmp_out = (uint32_t *)it->second.first;
 				// }
-				if (it->second.second <= COMPRESS_MIN)
-				{
-					tmp_out = (uint32_t *)it->second.first;
-				}
-				else
-					for_uncompress(it->second.first, tmp_out, it->second.second);
-				for (int i = 0; i < it->second.second; i++)
-				{
-					candidate.insert(tmp_out[i]);
-				}
-			} // else invalid_query++;
-		}	  // else bloomMiss++;
+				// else
+				// 	for_uncompress(it->second.first, tmp_out, it->second.second);
+				// for (int i = 0; i < it->second.second; i++)
+				// {
+				// 	candidate.insert(tmp_out[i]);
+				// }
+			}
+			else
+				invalid_query++;
+		}
+		// else bloomMiss++;
 
 		// tmpsub2=sub[1]^its;
 		// if(filters[1].contains(tmpsub2)){
@@ -375,98 +402,116 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 		// }//else invalid_query++;
 		// }//else bloomMiss++;
 	}
-	for (auto &its : this->C_0_TO_subhammdis[1])
+	for (auto &its : this->C_0_TO_subhammdis[0])
 	{
 		tmpsub2 = sub[1] ^ its;
 		tmp_out = out;
-		// if (filters[1].contains(tmpsub2))
+		sub_key_I[0] = tmpsub2, sub_key_I[1] = 1;
+		// MurmurHash3_x86_32(sub_key_I, 8, hash_seed[1], out_key);
+		// if (filters[1].contains(tmpsub1))
 		{
-			auto it = comp_sub_index2.find(tmpsub2); // times++;bloomHit++;
-			if (it != comp_sub_index2.end())
-			{ // valid_query++;
-				// temp = it->second;
-				// for (auto &got : temp)
+			auto it = sub_index2.find(tmpsub2); // times++;bloomHit++;
+			if (it != sub_index2.end())
+			{
+				valid_query++;
+				temp = it->second;
+				for (auto &got : temp)
+				{
+					candidate.insert(got);
+				}
+				// if (it->second.second <= COMPRESS_MIN)
 				// {
-				// 	candidate.insert(got);
+				// 	tmp_out = (uint32_t *)it->second.first;
 				// }
-				if (it->second.second <= COMPRESS_MIN)
-				{
-					tmp_out = (uint32_t *)it->second.first;
-				}
-				else
-					for_uncompress(it->second.first, tmp_out, it->second.second);
-				for (int i = 0; i < it->second.second; i++)
-				{
-					candidate.insert(tmp_out[i]);
-				}
-			} // else invalid_query++;
-		}	  // else bloomMiss++;
+				// else
+				// 	for_uncompress(it->second.first, tmp_out, it->second.second);
+				// for (int i = 0; i < it->second.second; i++)
+				// {
+				// 	candidate.insert(tmp_out[i]);
+				// }
+			}
+			else
+				invalid_query++;
+		}
+		// else bloomMiss++;
 	}
-	for (auto &its : this->C_0_TO_subhammdis[1])
+	for (auto &its : this->C_0_TO_subhammdis[0])
 	{
 		tmpsub3 = sub[2] ^ its;
 		tmp_out = out;
-		// if (filters[2].contains(tmpsub3))
+		sub_key_I[0] = tmpsub3, sub_key_I[1] = 2;
+		// MurmurHash3_x86_32(sub_key_I, 8, hash_seed[2], out_key);
+		// if (filters[2].contains(tmpsub1))
 		{
-			auto it = comp_sub_index3.find(tmpsub3); // times++;bloomHit++;
-			if (it != comp_sub_index3.end())
-			{ // valid_query++;
-				// temp = it->second;
-				// for (auto &got : temp)
+			auto it = sub_index3.find(tmpsub3); // times++;bloomHit++;
+			if (it != sub_index3.end())
+			{
+				valid_query++;
+				temp = it->second;
+				for (auto &got : temp)
+				{
+					candidate.insert(got);
+				}
+				// if (it->second.second <= COMPRESS_MIN)
 				// {
-				// 	candidate.insert(got);
+				// 	tmp_out = (uint32_t *)it->second.first;
 				// }
-				if (it->second.second <= COMPRESS_MIN)
-				{
-					tmp_out = (uint32_t *)it->second.first;
-				}
-				else
-					for_uncompress(it->second.first, tmp_out, it->second.second);
-				for (int i = 0; i < it->second.second; i++)
-				{
-					candidate.insert(tmp_out[i]);
-				}
-			} // else invalid_query++;
-		}	  // else bloomMiss++;
+				// else
+				// 	for_uncompress(it->second.first, tmp_out, it->second.second);
+				// for (int i = 0; i < it->second.second; i++)
+				// {
+				// 	candidate.insert(tmp_out[i]);
+				// }
+			}
+			else
+				invalid_query++;
+		}
+		// else bloomMiss++;
 	}
-	for (auto &its : this->C_0_TO_subhammdis[1])
+	for (auto &its : this->C_0_TO_subhammdis[0])
 	{
 		tmpsub4 = sub[3] ^ its;
 		tmp_out = out;
-		// if (filters[3].contains(tmpsub4))
+		sub_key_I[0] = tmpsub4, sub_key_I[1] = 3;
+		// MurmurHash3_x86_32(sub_key_I, 8, hash_seed[3], out_key);
+		// if (filters[3].contains(tmpsub1))
 		{
-			auto it = comp_sub_index4.find(tmpsub4); // times++;bloomHit++;
-			if (it != comp_sub_index4.end())
-			{ // valid_query++;
-				// temp = it->second; // times++;
-				// for (auto &got : temp)
+			auto it = sub_index4.find(tmpsub4); // times++;bloomHit++;
+			if (it != sub_index4.end())
+			{
+				valid_query++;
+				temp = it->second; // times++;
+				for (auto &got : temp)
+				{
+					candidate.insert(got);
+				}
+				// if (it->second.second <= COMPRESS_MIN)
 				// {
-				// 	candidate.insert(got);
+				// 	tmp_out = (uint32_t *)it->second.first;
 				// }
-				if (it->second.second <= COMPRESS_MIN)
-				{
-					tmp_out = (uint32_t *)it->second.first;
-				}
-				else
-					for_uncompress(it->second.first, tmp_out, it->second.second);
-				for (int i = 0; i < it->second.second; i++)
-				{
-					candidate.insert(tmp_out[i]);
-				}
-			} // else invalid_query++;
-		}	  // else bloomMiss++;
+				// else
+				// 	for_uncompress(it->second.first, tmp_out, it->second.second);
+				// for (int i = 0; i < it->second.second; i++)
+				// {
+				// 	candidate.insert(tmp_out[i]);
+				// }
+			}
+			else
+				invalid_query++;
+		}
+		// else bloomMiss++;
 	}
 	uint64_t cmp_hamm[2] = {0};
 	uint64_t count = 0;
 	// printf("times1:%d times2 %d\n",line_times,times);
 	//  printf("bloomHit:%lu bloomMiss:%lu\n",bloomHit,bloomMiss);
-	//  printf("valid_query:%lu invalid_query:%lu,sum%lu\n",valid_query,invalid_query,valid_query+invalid_query);
+	// printf("valid_query:%lu invalid_query:%lu,sum%lu\n", valid_query, invalid_query, valid_query + invalid_query + bloomMiss);
 
 	information got_out;
 	// tsl::hopscotch_map<uint32_t,information>::const_iterator got_out;
 	for (auto it = candidate.begin(); it != candidate.end();)
 	{
-		got_out = full_index2[*it];
+		got_out = full_index[*it];
 		if (1)
 		{
 			cmp_hamm[0] = query[0] ^ (got_out.fullkey[0]);
@@ -648,9 +693,9 @@ void init_test_pool()
 {
 	// parting.set_skewed_partition(cont.full_index);
 	// vector<uint32_t> tmp;
-	// parting.make_partition(tmp);		//make partition
+	// parting.make_partition(tmp);		//make partition，进行维度重排，不是顺序地产生4个子段
 	// write_dimension(tmp.data());
-	compress_sub_index(); // compress sub_index to comp_sub_index
+	// compress_sub_index(); // compress sub_index to comp_sub_index
 	cont.get_test_pool();
 	printf("sub_index1 size: %d,sub_index2 size: %d,sub_index3 size: %d,sub_index4 size: %d\n", cont.sub_index1.size(), cont.sub_index2.size(), cont.sub_index3.size(), cont.sub_index4.size());
 	printf("The full index entry is: %d \n", cont.full_index.size());
@@ -701,10 +746,11 @@ void encall_send_data(void *dataptr, size_t len)
 	information temp_information;
 	uint32_t key_index = 0;
 	std::pair<uint64_t, uint64_t> tmp;
+	uint32_t sub_key_I[2], out_key[1];
 	for (int i = 0; i < len; i++) // auto& tmp:sign_data
 	{
 		tmp = data[i];
-		get_dim(tmp);
+		// get_dim(tmp);	//将维度重排，作用不大；如果这里重拍了，那么query的测试集也需要重排
 		temp_information.fullkey[0] = tmp.first;  // temp_key[0];
 		temp_information.fullkey[1] = tmp.second; // temp_key[1];
 		// temp_information.identifier=targets_data[out_id];
@@ -713,6 +759,12 @@ void encall_send_data(void *dataptr, size_t len)
 		cont.get_sub_fingerprint(sub, temp_key);
 		// out_id=cont.random_uuid();
 
+		for (int j = 0; j < 4; j++)
+		{
+			// sub_key_I[0] = sub[j], sub_key_I[1] = j;
+			// MurmurHash3_x86_32(sub_key_I, 8, hash_seed[j], out_key);
+			// cont.filters.insert(out_key[0]);
+		}
 		cont.filters[0].insert(sub[0]);
 		cont.filters[1].insert(sub[1]);
 		cont.filters[2].insert(sub[2]);
@@ -725,6 +777,7 @@ void encall_send_data(void *dataptr, size_t len)
 		++key_index;
 		++out_id;
 	}
+	// printf("size %d",cont.full_index.size());
 }
 void encall_send_targets(void *dataptr, size_t len)
 {
@@ -733,6 +786,17 @@ void encall_send_targets(void *dataptr, size_t len)
 	uint32_t *data = reinterpret_cast<uint32_t *>(dataptr);
 	targets_data.insert(targets_data.end(), data, data + len);
 	// printf("%d",sign_data.size());
+}
+void encall_send_query(void *dataptr, size_t len)
+{
+	std::pair<uint64_t, uint64_t> *data = reinterpret_cast<std::pair<uint64_t, uint64_t> *>(dataptr);
+	cont.tmp_test_pool.insert(cont.tmp_test_pool.end(), data, data + len);
+}
+void encall_send_qtargets(void *dataptr, size_t len)
+{
+	// TODO: 暂时没有考虑targets发送；之后可以集成到send_data中，用一个vector<uint>同时保存data和targets
+	uint32_t *data = reinterpret_cast<uint32_t *>(dataptr);
+	// targets_data.insert(targets_data.end(),data,data+len);
 }
 
 void encall_find_one(void *dataptr, uint32_t *res, uint64_t hammdist)

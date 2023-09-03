@@ -76,6 +76,7 @@ public:
 	unordered_map<uint32_t, pair<uint8_t *, uint32_t>> comp_sub_index4;
 
 	unordered_map<uint32_t, information> full_index2;
+	vector<pair<uint64_t, uint64_t>> tmp_test_pool;
 	uint32_t *out = new uint32_t[6000];
 	// tsl::hopscotch_map<uint32_t,information> full_index;
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index1;
@@ -86,7 +87,7 @@ public:
 	uint32_t dimension[128];
 	bloom_filter filters[4];
 	vector<uint32_t> C_0_TO_subhammdis[2]; // 用于与特征段做异或运算的所有数字的容器, C_0_TO[0]存放的是subhammdis阈值以内的数字，C_0_TO[1]存放的是subhammdis-1阈值以内的数字
-	set<pair<uint64_t, uint64_t>> test_pool;
+	vector<pair<uint64_t, uint64_t>> test_pool;
 	containers();
 	void random_128(uint64_t *temp_key);
 	void get_sub_fingerprint(uint32_t *sub_fingerprint, uint64_t *fingerprint);

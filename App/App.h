@@ -40,35 +40,37 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
-#include "sgx_error.h"       /* sgx_status_t */
-#include "sgx_eid.h"     /* sgx_enclave_id_t */
+#include "sgx_error.h" /* sgx_status_t */
+#include "sgx_eid.h"   /* sgx_enclave_id_t */
 
 #ifndef TRUE
-# define TRUE 1
+#define TRUE 1
 #endif
 
 #ifndef FALSE
-# define FALSE 0
+#define FALSE 0
 #endif
 
-#if   defined(__GNUC__)
-# define ENCLAVE_FILENAME "enclave.signed.so"
+#if defined(__GNUC__)
+#define ENCLAVE_FILENAME "enclave.signed.so"
 #endif
 
-extern sgx_enclave_id_t global_eid;    /* global enclave id */
+extern sgx_enclave_id_t global_eid; /* global enclave id */
 
 #if defined(__cplusplus)
-extern "C" {
+extern "C"
+{
 #endif
 
-void ecall_libcxx_functions(void);
+    void ecall_libcxx_functions(void);
 
-//change!!
-void init_from_enclave(void);
-void test_from_enclave(void);
+    // change!!
+    void init_from_enclave(void);
+    void test_from_enclave(void);
 
-void read_data(std::string file_name,std::vector<std::pair<uint64_t,uint64_t>> &full_key,std::vector<uint32_t> &targets);
-void send_data(std::vector<std::pair<uint64_t,uint64_t>> &full_key,std::vector<uint32_t> &targets,int f);
+    void read_data(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &data, std::vector<uint32_t> &data_target, int isQuery);
+    void send_data(std::vector<std::pair<uint64_t, uint64_t>> &data, std::vector<uint32_t> &data_target, int isQuery);
+    void read_data_query(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &query, int is_img_code);
 #if defined(__cplusplus)
 }
 #endif
