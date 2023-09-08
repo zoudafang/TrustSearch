@@ -10,6 +10,7 @@
 #include "../ServerECall/ecallEnc.h"
 #include <utility>
 #include "partition.h"
+#include "../include/murmurHash.h"
 extern "C"
 {
 #include "libfor/for.h"
@@ -85,7 +86,7 @@ public:
 	// tsl::hopscotch_map<uint32_t,vector<uint32_t>>sub_index4;
 	// vector<information>full_index;
 	uint32_t dimension[128];
-	bloom_filter filters[4];
+	bloom_filter filters;
 	vector<uint32_t> C_0_TO_subhammdis[2]; // 用于与特征段做异或运算的所有数字的容器, C_0_TO[0]存放的是subhammdis阈值以内的数字，C_0_TO[1]存放的是subhammdis-1阈值以内的数字
 	vector<pair<uint64_t, uint64_t>> test_pool;
 	containers();
@@ -99,3 +100,5 @@ public:
 	std::unordered_set<uint32_t> find_sim(uint64_t query[]);
 	void test();
 };
+
+void init_subindex();

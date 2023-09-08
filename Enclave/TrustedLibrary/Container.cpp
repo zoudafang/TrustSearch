@@ -185,12 +185,12 @@ void containers::initialize()
 	// full_index.reserve(initialize_size/500);
 	sub_information sub_info[4];
 	bloom_parameters parameters;
-	parameters.projected_element_count = 0;		 // initialize_size; // 预计插入initialize_size个元素
-	parameters.false_positive_probability = 0.1; // 期望的误判率为0.1
+	parameters.projected_element_count = test_data_len * 4; // initialize_size; // 预计插入initialize_size个元素
+	parameters.false_positive_probability = 0.001;			// 期望的误判率为0.1
 	parameters.random_seed = 0xA5A5A5A5;
 	parameters.compute_optimal_parameters(); // 计算最优参数
-	for (int i = 0; i < 4; i++)
-		filters[i] = bloom_filter(parameters);
+											 // for (int i = 0; i < 4; i++)
+	filters = bloom_filter(parameters);
 	// uint32_t key_index=0;
 	// while(full_index.size()<initialize_size)
 	// {
@@ -218,6 +218,7 @@ void containers::initialize()
 }
 void containers::get_test_pool()
 {
+	init_subindex();
 	// uint64_t temp_key[2]={0};
 	// for(auto it : full_index)
 	// {
@@ -252,6 +253,7 @@ void containers::get_test_pool()
 	uint32_t end = tmp_test_pool.size();
 	while (test_pool.size() < test_size && end > 0)
 	{
+		// index1++;
 		sgx_read_rand(reinterpret_cast<unsigned char *>(&index1), sizeof(index1));
 		index1 %= end;
 		test_pool.emplace_back(tmp_test_pool[index1]);
@@ -339,8 +341,8 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 		//	LOGGER("SUB INDEX SIZE: %zu %zu %zu %zu",sub_index1.size(),sub_index2.size(),sub_index3.size(),sub_index4.size());
 		// printf("num%d\n",candidate.size());
 		sub_key_I[0] = tmpsub1, sub_key_I[1] = 0;
-		// MurmurHash3_x86_32(sub_key_I, 8, hash_seed[0], out_key);
-		// if (filters[0].contains(tmpsub1))
+		MurmurHash3_x86_32(sub_key_I, 8, hash_seed[0], out_key);
+		if (filters.contains(out_key[0]))
 		{
 			auto it = sub_index1.find(tmpsub1); // times++;bloomHit++;
 			if (it != sub_index1.end())			// 如果是compress后的，用comp_sub_index1 + for_uncompress；不然用sub_index1 + for(auto& got:temp){
@@ -407,8 +409,8 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 		tmpsub2 = sub[1] ^ its;
 		tmp_out = out;
 		sub_key_I[0] = tmpsub2, sub_key_I[1] = 1;
-		// MurmurHash3_x86_32(sub_key_I, 8, hash_seed[1], out_key);
-		// if (filters[1].contains(tmpsub1))
+		MurmurHash3_x86_32(sub_key_I, 8, hash_seed[1], out_key);
+		if (filters.contains(out_key[0]))
 		{
 			auto it = sub_index2.find(tmpsub2); // times++;bloomHit++;
 			if (it != sub_index2.end())
@@ -440,8 +442,8 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 		tmpsub3 = sub[2] ^ its;
 		tmp_out = out;
 		sub_key_I[0] = tmpsub3, sub_key_I[1] = 2;
-		// MurmurHash3_x86_32(sub_key_I, 8, hash_seed[2], out_key);
-		// if (filters[2].contains(tmpsub1))
+		MurmurHash3_x86_32(sub_key_I, 8, hash_seed[2], out_key);
+		if (filters.contains(out_key[0]))
 		{
 			auto it = sub_index3.find(tmpsub3); // times++;bloomHit++;
 			if (it != sub_index3.end())
@@ -473,8 +475,8 @@ std::unordered_set<uint32_t> containers::find_sim(uint64_t query[])
 		tmpsub4 = sub[3] ^ its;
 		tmp_out = out;
 		sub_key_I[0] = tmpsub4, sub_key_I[1] = 3;
-		// MurmurHash3_x86_32(sub_key_I, 8, hash_seed[3], out_key);
-		// if (filters[3].contains(tmpsub1))
+		MurmurHash3_x86_32(sub_key_I, 8, hash_seed[3], out_key);
+		if (filters.contains(out_key[0]))
 		{
 			auto it = sub_index4.find(tmpsub4); // times++;bloomHit++;
 			if (it != sub_index4.end())
@@ -761,23 +763,92 @@ void encall_send_data(void *dataptr, size_t len)
 
 		for (int j = 0; j < 4; j++)
 		{
-			// sub_key_I[0] = sub[j], sub_key_I[1] = j;
-			// MurmurHash3_x86_32(sub_key_I, 8, hash_seed[j], out_key);
-			// cont.filters.insert(out_key[0]);
+			sub_key_I[0] = sub[j], sub_key_I[1] = j;
+			MurmurHash3_x86_32(sub_key_I, 8, hash_seed[j], out_key);
+			cont.filters.insert(out_key[0]);
 		}
-		cont.filters[0].insert(sub[0]);
-		cont.filters[1].insert(sub[1]);
-		cont.filters[2].insert(sub[2]);
-		cont.filters[3].insert(sub[3]);
-		cont.sub_index1[sub[0]].push_back(out_id);
-		cont.sub_index2[sub[1]].push_back(out_id);
-		cont.sub_index3[sub[2]].push_back(out_id);
-		cont.sub_index4[sub[3]].push_back(out_id);
+		// cont.filters[0].insert(sub[0]);
+		// cont.filters[1].insert(sub[1]);
+		// cont.filters[2].insert(sub[2]);
+		// cont.filters[3].insert(sub[3]);
+		// cont.sub_index1[sub[0]].push_back(out_id);
+		// cont.sub_index2[sub[1]].push_back(out_id);
+		// cont.sub_index3[sub[2]].push_back(out_id);
+		// cont.sub_index4[sub[3]].push_back(out_id);
 		cont.full_index[out_id] = (temp_information);
 		++key_index;
 		++out_id;
 	}
 	// printf("size %d",cont.full_index.size());
+}
+void init_subindex()
+{
+	uint64_t temp_key[2] = {0};
+	uint32_t out_id = 0;
+	uint32_t sub[4] = {0};
+	information temp_information;
+	uint32_t key_index = 0;
+	std::pair<uint64_t, uint64_t> tmp;
+	uint32_t sub_key_I[2], out_key[1];
+	{
+		out_id = 0;
+		for (auto val : cont.full_index)
+		{
+			temp_information.fullkey[0] = val.second.fullkey[0]; // temp_key[0];
+			temp_information.fullkey[1] = val.second.fullkey[1]; // temp_key[1];
+			// temp_information.identifier=targets_data[out_id];
+			temp_key[0] = temp_information.fullkey[0];
+			temp_key[1] = temp_information.fullkey[1];
+			cont.get_sub_fingerprint(sub, temp_key);
+
+			cont.sub_index1[sub[0]].push_back(val.first);
+		}
+	}
+	{
+		out_id = 0;
+		for (auto val : cont.full_index)
+		{
+			temp_information.fullkey[0] = val.second.fullkey[0]; // temp_key[0];
+			temp_information.fullkey[1] = val.second.fullkey[1]; // temp_key[1];
+			// temp_information.identifier=targets_data[out_id];
+			temp_key[0] = temp_information.fullkey[0];
+			temp_key[1] = temp_information.fullkey[1];
+			cont.get_sub_fingerprint(sub, temp_key);
+
+			cont.sub_index2[sub[1]].push_back(val.first);
+			out_id++;
+		}
+	}
+	{
+		out_id = 0;
+		for (auto val : cont.full_index)
+		{
+			temp_information.fullkey[0] = val.second.fullkey[0]; // temp_key[0];
+			temp_information.fullkey[1] = val.second.fullkey[1]; // temp_key[1];
+			// temp_information.identifier=targets_data[out_id];
+			temp_key[0] = temp_information.fullkey[0];
+			temp_key[1] = temp_information.fullkey[1];
+			cont.get_sub_fingerprint(sub, temp_key);
+
+			cont.sub_index3[sub[2]].push_back(val.first);
+			out_id++;
+		}
+	}
+	{
+		out_id = 0;
+		for (auto val : cont.full_index)
+		{
+			temp_information.fullkey[0] = val.second.fullkey[0]; // temp_key[0];
+			temp_information.fullkey[1] = val.second.fullkey[1]; // temp_key[1];
+			// temp_information.identifier=targets_data[out_id];
+			temp_key[0] = temp_information.fullkey[0];
+			temp_key[1] = temp_information.fullkey[1];
+			cont.get_sub_fingerprint(sub, temp_key);
+
+			cont.sub_index4[sub[3]].push_back(val.first);
+			out_id++;
+		}
+	}
 }
 void encall_send_targets(void *dataptr, size_t len)
 {
