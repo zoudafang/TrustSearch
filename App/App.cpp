@@ -47,7 +47,7 @@
 #include <openssl/ec.h>
 #include <signal.h>
 #include <boost/thread/thread.hpp>
-#include "../include/constVar.h"
+// #include "../include/constVar.h"
 #include "../include/serverOptThead.h"
 #include "../include/sslConnection.h"
 #include <openssl/ssl.h>
@@ -165,10 +165,39 @@ void ocall_print_string(const char *str)
     printf("%s", str);
 }
 
+uint32_t test_data_len = 0;
 void start_server();
+void write_querys(std::vector<std::pair<uint64_t, uint64_t>> &test);
 /* Application entry */
 int SGX_CDECL main(int argc, char *argv[])
 {
+    uint32_t query_type = QUERY_BATCH, threshold = 8;
+    int option;
+    int invalid = 0;
+    const char optString[] = "l:i:";
+
+    while ((option = getopt(argc, argv, optString)) != -1)
+    {
+        // l:len of data_test; i: 0=test invalid 1=valid 2,3=test time
+        switch (option)
+        {
+        case 'l':
+        {
+            test_data_len = atoi(optarg);
+            // setTestDataLen(atoi(optarg));
+            printf("test_data_len: %d\n", test_data_len);
+            // test_data_len1 = test_data_len;
+        }
+        case 'i':
+        {
+            invalid = atoi(optarg);
+            break;
+        }
+        break;
+        }
+    }
+    ecall_change_len(global_eid, test_data_len, invalid);
+
     (void)(argc);
     (void)(argv);
 
@@ -182,18 +211,19 @@ int SGX_CDECL main(int argc, char *argv[])
 
     std::vector<std::pair<uint64_t, uint64_t>> res;
     std::vector<uint32_t> targets;
+    std::vector<std::pair<uint64_t, uint64_t>> test_data;
 
     //----read gist1M and sift1M-----
-    read_data("gistM.bin", res, targets, 1); //
-    // change!!!
-    init_from_enclave();
-    send_data(res, targets, 0);
-    res.clear();
-    targets.clear();
-    read_data_query("gistM.bin", res, 1);
-    send_data(res, targets, 1);
+    // read_data("siftM.bin", res, targets, 1); //
+    // // change!!!
+    // init_from_enclave();
+    // send_data(res, targets, 0);
+    // res.clear();
+    // targets.clear();
+    // read_data_query("siftM.bin", res, 0);
+    // send_data(res, targets, 1);
 
-    //----read img_code512.bin-----暂时，因为query*.bin没有包括target，所以读取方式不一样 (如果运行时的data长度小于500w，使用query的效果不好)
+    // //----read img_code512.bin-----暂时，因为query*.bin没有包括target，所以读取方式不一样 (如果运行时的data长度小于500w，使用query的效果不好)
     // read_data("img_code512.bin", res, targets, 0);
     // init_from_enclave();
     // send_data(res, targets, 0);
@@ -201,16 +231,31 @@ int SGX_CDECL main(int argc, char *argv[])
     // targets.clear();
     // read_data("query_img_code512.bin", res, targets, 1);
     // send_data(res, targets, 1);
+    // printf("success\n");
 
+    // init_test_pool(global_eid);
+
+    printf("test_data_len: %d\n", test_data_len);
+    init_from_enclave();
+    printf("test_data_len: %d\n", test_data_len);
+    std::vector<uint32_t> masks;
+    prepare(2, masks);
+    printf("test_data_len: %d\n", test_data_len);
+    get_rand_keys(masks, res, test_data, invalid);
+    printf("test_data_len: %d res %d\n", test_data.size(), res.size());
+
+    send_data(res, targets, 0);
+    send_data(test_data, targets, 1);
     init_test_pool(global_eid);
+    write_querys(test_data);
 
     clock_t startTime = clock();
-    test_from_enclave();
+    // test_from_enclave();
     clock_t endTime = clock();
 
     double costTime = double(endTime - startTime) / CLOCKS_PER_SEC;
     printf("The test took %lf seconds.\n", costTime);
-    // start_server();
+    start_server();
 
     /* Destroy the enclave */
     sgx_destroy_enclave(global_eid);
@@ -241,6 +286,22 @@ void start_server()
      * |---------------------------------------|
      */
 
+    FILE *file = fopen("app.log", "w+"); // 写入模式，覆盖现有内容
+    if (file)
+    {
+        const char *data = "start server successful";
+        fprintf(file, "%s\n", data); // 使用fprintf直接写入格式化的字符串，这里是添加一个换行符
+        fclose(file);
+    }
+    else
+    {
+        const char *data = "start server error";
+        fprintf(file, "%s\n", data);
+        fclose(file);
+    }
+
+    printf("start server successful\n");
+
     while (true)
     {
         // tool::Logging(myName.c_str(), "waiting the request from the client.\n");
@@ -251,6 +312,20 @@ void start_server()
     }
 
     return;
+}
+
+void write_querys(std::vector<pair<uint64_t, uint64_t>> &test)
+{
+    std::ofstream output("tmp_test.bin", std::ios::binary);
+    int i = 0;
+    for (const auto &pair : test)
+    {
+        output.write(reinterpret_cast<const char *>(&pair.first), sizeof(pair.first));
+        output.write(reinterpret_cast<const char *>(&pair.second), sizeof(pair.second));
+        // output.write(reinterpret_cast<const char *>(&targets[i]), sizeof(targets[i]));
+        // i++;
+    }
+    output.close();
 }
 
 void write_dimension(void *data)

@@ -20,7 +20,7 @@
 #include "string.h"
 
 #include "../../include/chunkStructure.h"
-#include "../../include/constVar.h"
+// #include "../../include/constVar.h"
 // #include "../../include/murmurHash.h"
 
 static const unsigned char ecall_gcm_aad[] = {

@@ -17,9 +17,37 @@
 using namespace std;
 
 void readData(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &data);
+void read_data_query(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &query, int is_img_code);
 
 int main(int argc, char *argv[])
 {
+    uint32_t query_type = QUERY_BATCH, threshold = 8;
+    int option;
+    int invalid = 0;
+    uint32_t test_data_len = 0;
+    const char optString[] = "l:i:";
+
+    while ((option = getopt(argc, argv, optString)) != -1)
+    {
+        switch (option)
+        {
+        case 'l':
+        {
+            test_data_len = atoi(optarg);
+            // ecall_change_len(global_eid, atoi(optarg));
+            // setTestDataLen(atoi(optarg));
+            printf("test_data_len: %d\n", test_data_len);
+            // test_data_len1 = test_data_len;
+        }
+        case 'i':
+        {
+            invalid = atoi(optarg);
+            break;
+        }
+        break;
+        }
+    }
+
     vector<boost::thread *> thList;
     SSLConnection *dataSecureChannel;
     pair<int, SSL *> serverConnectionRecord;
@@ -71,7 +99,10 @@ int main(int argc, char *argv[])
     uint8_t *sessionKey_ = const_sessionKey;
 
     std::vector<std::pair<uint64_t, uint64_t>> res;
-    readData("../../img_code128.bin", res);
+    // readData("../../query_img_code512.bin", res);
+    // read_data_query("../../siftM.bin", res, 0);
+    // read_data_query("../../query_img_code512.bin", res, 1);
+    read_data_query("../../tmp_test.bin", res, 1);
 
     // std::chrono::steady_clock::time_point startTime2, endTime2;
     // std::chrono::duration<double> duration2;
@@ -110,12 +141,112 @@ int main(int argc, char *argv[])
     //-------test query and receive ,batch query------
     uint32_t query_num = 1000, query_size = sizeof(uint64_t) * query_num * 2;
     uint64_t *encData = new uint64_t[query_num * 2];
-    for (int i = 0; i < query_num * 2; i += 2)
+    // for (int i = 0; i < query_num * 2; i += 2)
+    // {
+    //     encData[i] = res[i / 2].first;
+    //     encData[i + 1] = res[i / 2].second;
+    //     printf("encData[%d]=%llu\n", i / 2, encData[i]);
+    // }
+
+    // srand(time(NULL));
+    // for (int index = 0; index < res.size(); index++)
+    // {
+    //     if (index < query_num)
+    //     {
+    //         encData[index * 2] = res[index].first;
+    //         encData[index * 2 + 1] = res[index].second;
+    //     }
+    //     else
+    //     {
+    //         int j = rand() % (index + 1);
+    //         if (j < query_num)
+    //         {
+    //             encData[j * 2] = res[index].first;
+    //             encData[j * 2 + 1] = res[index].second;
+    //         }
+    //     }
+    //     // printf("encData[%d]=%llu\n", i, encData[i]);
+    // }
+
+    // uint32_t batch_size = 530, nums = floor(1.0 * test_data_len / batch_size);
+    // uint32_t index1 = 0;
+    // uint32_t end = res.size();
+    // vector<pair<uint64_t, uint64_t>> test_pool;
+    // nums = (nums < 1000 ? nums : 1000);
+    // // if (!is_invalid)
+    // {
+    //     while (1)
+    //     {
+    //         for (int i = 0; i < nums; i++)
+    //         {
+    //             if (test_pool.size() < 1000)
+    //                 test_pool.push_back(res[i]);
+    //             else
+    //                 goto ends;
+    //         }
+    //     }
+    // ends:
+    //     nums++;
+    // }
+    // for (int i = 0; i < 1000; i++)
+    // {
+    //     encData[i * 2] = test_pool[i].first;
+    //     encData[i * 2 + 1] = test_pool[i].second;
+    // }
+
+    if (invalid > 1)
     {
-        encData[i] = res[i / 2].first;
-        encData[i + 1] = res[i / 2].second;
-        printf("encData[%d]=%llu\n", i / 2, encData[i]);
+        // test time
+        srand(time(NULL));
+        for (int index = 0; index < res.size(); index++)
+        {
+            if (index < query_num)
+            {
+                encData[index * 2] = res[index].first;
+                encData[index * 2 + 1] = res[index].second;
+            }
+            else
+            {
+                int j = rand() % (index + 1);
+                if (j < query_num)
+                {
+                    encData[j * 2] = res[index].first;
+                    encData[j * 2 + 1] = res[index].second;
+                }
+            }
+            // printf("encData[%d]=%llu\n", i, encData[i]);
+        }
     }
+    else
+    {
+        // test invalid
+        uint32_t batch_size = 530, nums = floor(1.0 * test_data_len / batch_size);
+        uint32_t index1 = 0;
+        uint32_t end = res.size();
+        vector<pair<uint64_t, uint64_t>> test_pool;
+        nums = (nums < 1000 ? nums : 1000);
+        // if (!is_invalid)
+        {
+            while (1)
+            {
+                for (int i = 0; i < nums; i++)
+                {
+                    if (test_pool.size() < 1000)
+                        test_pool.push_back(res[i]);
+                    else
+                        goto ends;
+                }
+            }
+        ends:
+            nums++;
+        }
+        for (int i = 0; i < 1000; i++)
+        {
+            encData[i * 2] = test_pool[i].first;
+            encData[i * 2 + 1] = test_pool[i].second;
+        }
+    }
+
     SendMsgBuffer_t sendMsgBuffer;
     sendMsgBuffer.sendBuffer = (uint8_t *)malloc(sizeof(NetworkHead_t) + sizeof(uint64_t) * query_num * 2);
     sendMsgBuffer.dataBuffer = sendMsgBuffer.sendBuffer + sizeof(NetworkHead_t);
@@ -216,6 +347,36 @@ void readData(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> 
     {
         data.emplace_back(high, low);
         input.read(reinterpret_cast<char *>(&target), sizeof(target)); // read the target of sign_data
+        input.read(reinterpret_cast<char *>(&target), sizeof(target));
+    }
+    input.close();
+}
+
+void read_data_query(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &query, int is_img_code)
+{
+    std::ifstream input(file_name, std::ios::binary);
+    uint64_t high, low;
+    uint32_t target;
+    uint32_t data_len = 1000000;
+    if (is_img_code)
+    {
+        while (input.read(reinterpret_cast<char *>(&high), sizeof(high)) && input.read(reinterpret_cast<char *>(&low), sizeof(low)))
+        {
+            query.emplace_back(high, low);
+            // input.read(reinterpret_cast<char *>(&high), sizeof(high));//cautious
+        }
+    }
+    else
+    {
+        uint32_t read_len = 0;
+        while (read_len < data_len && input.read(reinterpret_cast<char *>(&high), sizeof(high)) && input.read(reinterpret_cast<char *>(&low), sizeof(low)))
+        {
+            read_len++;
+        }
+        while (input.read(reinterpret_cast<char *>(&high), sizeof(high)) && input.read(reinterpret_cast<char *>(&low), sizeof(low)))
+        { // query.size() < test_data_len &&
+            query.push_back({high, low});
+        }
     }
     input.close();
 }
