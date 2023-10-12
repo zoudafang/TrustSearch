@@ -11,6 +11,7 @@
 #include <utility>
 #include "partition.h"
 #include "../include/murmurHash.h"
+#include <math.h>
 extern "C"
 {
 #include "libfor/for.h"
@@ -99,6 +100,13 @@ public:
 	void changeHammingDist(uint64_t hammingdist);
 	std::unordered_set<uint32_t> find_sim(uint64_t query[]);
 	void test();
+
+	void get_rand_keys(int is_invalid_q);
+	void random_32(uint32_t *temp_key);
+	void get_invalid_query();
+
+	uint32_t test_data_len = 1000;
+	uint32_t is_invalid;
 };
 
 void init_subindex();

@@ -61,6 +61,7 @@ extern sgx_enclave_id_t global_eid; /* global enclave id */
 extern "C"
 {
 #endif
+    extern uint32_t test_data_len;
 
     void ecall_libcxx_functions(void);
 
@@ -71,6 +72,9 @@ extern "C"
     void read_data(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &data, std::vector<uint32_t> &data_target, int isQuery);
     void send_data(std::vector<std::pair<uint64_t, uint64_t>> &data, std::vector<uint32_t> &data_target, int isQuery);
     void read_data_query(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &query, int is_img_code);
+    void change_data_len(int val);
+    void get_rand_keys(std::vector<uint32_t> &C_0_TO_subhammdis, std::vector<std::pair<uint64_t, uint64_t>> &full_index, std::vector<std::pair<uint64_t, uint64_t>> &test_pool, int is_invalid_q);
+    void prepare(uint32_t tmp_sub_hammdist, std::vector<uint32_t> &C_0_TO_subhammdis);
 #if defined(__cplusplus)
 }
 #endif

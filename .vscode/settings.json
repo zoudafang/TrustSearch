@@ -1,5 +1,6 @@
 {
     "files.associations": {
+        "*.cpp": "cpp",
         "__bit_reference": "cpp",
         "__config": "cpp",
         "__debug": "cpp",
@@ -77,7 +78,8 @@
         "random": "cpp",
         "memory_resource": "cpp",
         "cinttypes": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "sparsetable": "cpp"
     },
     "cmake.sourceDirectory": "/home/cluster/ZJ/SGX-Search-2q1-back/Client"
 }

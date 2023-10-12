@@ -26,11 +26,11 @@ static const char CLIENT_KEY[] = "../../key/client/client.key";
 static const char CA_CERT[] = "key/ca/ca.crt";              // 注意可执行文件和key文件的相对路径
 static const char CA_CERT_CLIENT[] = "../../key/ca/ca.crt"; // 注意可执行文件和key文件的相对路径
 
-static const char SERVER_IP[] = "127.0.0.10"; // server ip
-static const int SERVER_PORT = 8082;          // server port
+static const char SERVER_IP[] = "127.0.0.20"; // server ip
+static const int SERVER_PORT = 9010;          // server port
 static const uint32_t THREAD_STACK_SIZE = 8 * 1024 * 1024;
 
-static const uint32_t test_data_len = 1000000;  // 5124667   // the test data length 1281167
+// static uint32_t test_data_len = 10000;          // = 1000000;        // 5124667   // the test data length 1281167
 static const uint32_t sendKey_batch_size = 512; // the batch size of sending to enclave
 
 // for DEBE

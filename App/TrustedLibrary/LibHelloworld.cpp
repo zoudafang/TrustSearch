@@ -40,8 +40,12 @@ void read_data(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>>
     uint64_t high, low;
     uint32_t target;
     uint32_t index = 0;
+    uint32_t max_num = UINT32_MAX;
+    if (isQuery)
+        max_num = 1000000;
     // data.resize(test_data_len);
-    while (data.size() < test_data_len && input.read(reinterpret_cast<char *>(&high), sizeof(high)) && input.read(reinterpret_cast<char *>(&low), sizeof(low)))
+    printf("lib test_data_len: %d\n", test_data_len);
+    while (index < max_num && input.read(reinterpret_cast<char *>(&high), sizeof(high)) && input.read(reinterpret_cast<char *>(&low), sizeof(low)))
     { // data.size() < test_data_len &&
         // data.emplace_back(high, low); // 1281167
         std::pair<uint64_t, uint64_t> tmp = {high, low};
@@ -61,7 +65,7 @@ void read_data(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>>
             int j = rand() % (index + 1);
             if (j < test_data_len)
             {
-                // data[j] = tmp; // data[index];
+                data[j] = tmp; // data[index];
             }
         }
         index++;
@@ -125,4 +129,9 @@ void read_data_query(std::string file_name, std::vector<std::pair<uint64_t, uint
         }
     }
     input.close();
+}
+
+void change_data_len(int val)
+{
+    test_data_len = val;
 }
