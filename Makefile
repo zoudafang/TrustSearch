@@ -145,7 +145,7 @@ else
 endif
 Crypto_Library_Name := sgx_tcrypto
 
-Enclave_Cpp_Files := Enclave/Enclave.cpp $(wildcard Enclave/TrustedLibrary/*.cpp) $(wildcard Enclave/ServerECall/*.cpp)
+Enclave_Cpp_Files := Enclave/Enclave.cpp $(wildcard Enclave/TrustedLibrary/*.cpp) $(wildcard Enclave/ServerECall/*.cpp) $(wildcard Enclave/TrustedLibrary/hashfunc/*.cpp)
 Enclave_Include_Paths := -IEnclave -I$(SGX_SDK)/include -I/opt/intel/sgxssl/include -I/opt/intel/sgxssl/lib64 -I$(SGX_SDK)/include/libcxx -I$(SGX_SDK)/include/tlibc 
 
 Enclave_C_Flags := -nostdinc -fvisibility=hidden -fpie -fstack-protector -fno-builtin-printf $(Enclave_Include_Paths)

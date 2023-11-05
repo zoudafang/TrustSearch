@@ -13,3 +13,6 @@ img_code128*.bin
 img_code512*.bin
 .vscode/c_cpp_properties.json
 output.txt
+.history/*
+res*.txt
+

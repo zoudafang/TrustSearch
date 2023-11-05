@@ -6,9 +6,23 @@ enclave {
         public void init(void);
         public void test_run(void);
         public void init_after_send(void);
-        public void encall_send_data([in,count=len,size=16] void* dataptr,size_t len);
-        public void encall_send_targets([in,count=len,size=4] void* dataptr,size_t len);
-        public void encall_find_one([in,count=2,size=8]void *dataptr,[out,size=4,count=3000] uint32_t* res,uint64_t hammdist);
-        public void encall_find_batch([in,count=len,size=16]void *dataptr,[out,size=4,count=res_len] uint32_t* res,uint32_t len,uint32_t res_len,uint64_t hammdist);
+        public void ecall_send_data([in,count=len,size=16] void* dataptr,size_t len);
+        public void ecall_send_targets([in,count=len,size=4] void* dataptr,size_t len);
+        public void ecall_send_query([in,count=len,size=16] void* dataptr,size_t len);
+        public void ecall_send_qtargets([in,count=len,size=4] void* dataptr,size_t len);
+        public void ecall_find_one([in,count=2,size=8]void *dataptr,[out,size=4,count=pre_len] uint32_t* res,[out,size=4,count=1]uint32_t* res_len,uint32_t pre_len,uint64_t hammdist);
+        public void ecall_find_batch([in,count=len,size=16]void *dataptr,[out,size=4,count=res_len] uint32_t* res,uint32_t len,uint32_t res_len,uint64_t hammdist);
+        public void ecall_change_para(uint32_t dataSet, uint32_t hamm, uint32_t clr_size,uint32_t clr_dist,uint32_t comb_num, uint32_t comb_size);
+
+        public void ecall_enc_dataset([in,out,count=len,size=1] void* dataptr,size_t len);
+        public void ecall_send_data_enc([in,count=batch_size,size=1]void *dataptr, size_t batch_size, int is_img_dataset);
+        public void ecall_send_query_enc([in,count=batch_size,size=1]void *dataptr, size_t batch_size, int is_img_dataset);
+        
+        public void ecall_init_id_index([user_check]void* id_index,uint32_t idx);
+    };
+
+    untrusted {
+        uint32_t ocall_write_ids([user_check]void* id_index,uint32_t idx,[in,size=1,count=len]uint8_t* ids,uint32_t len);        
+        uint8_t* ocall_init_id_point([user_check]void* id_index,uint32_t idx);
     };
 };

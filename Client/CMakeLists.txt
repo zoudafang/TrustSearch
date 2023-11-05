@@ -64,7 +64,7 @@ set(SYSTEM_LIBRARY_OBJ pthread)
 
 
 set(SGX_INCLUDE_PATH /opt/intel/sgxsdk/include)
-include_directories(../include ../Enclave ${SGX_INCLUDE_PATH})
+include_directories(../include ../App ${SGX_INCLUDE_PATH})
 
 set(OPENSSL_LIBRARY_OBJ ssl crypto)
 set(THIRD_OBJ ${OPENSSL_LIBRARY_OBJ}  ${BOOST_LIBRARY_OBJ} ${SYSTEM_LIBRARY_OBJ})
