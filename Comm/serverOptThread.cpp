@@ -197,6 +197,35 @@ void ServerOptThread::Run(SSL *clientSSL)
             delete[] queryBatch.sendData;
             break;
         }
+        case QUERY_KNN:
+        {
+            uint64_t *temp = (uint64_t *)sendBuf.dataBuffer;
+            uint64_t knn_num = sendBuf.header->hammdist;
+            printf("dist:%d\n", knn_num);
+            uint32_t dataLen = sendBuf.header->dataSize / sizeof(uint64_t) / 2;
+            testFull = new uint64_t[dataLen * 2];
+            memcpy(testFull, temp, dataLen * 2 * sizeof(uint64_t));
+
+            // encall to find the answer of the query
+            int res_len = dataLen * (knn_num + 10);
+            Query_batch_t queryBatch;
+            queryBatch.sendData = new uint32_t[res_len];
+
+            std::chrono::steady_clock::time_point startTime2, endTime2;
+            std::chrono::duration<double> duration2;
+            startTime2 = std::chrono::steady_clock::now(); // 记录开始时间
+            encall_find_knn(global_eid, testFull, queryBatch.sendData, dataLen, res_len, knn_num);
+
+            endTime2 = std::chrono::steady_clock::now();
+            duration2 = endTime2 - startTime2; // 计算持续时间
+            printf("hamm %d 函数运行时间：%f秒\n", knn_num, duration2.count());
+            // send the answer to client
+            dataSecureChannel_->SendData(clientSSL, (uint8_t *)queryBatch.sendData, res_len * 4);
+
+            delete[] queryBatch.sendData;
+            // exit(EXIT_FAILURE); // cautious kill
+            break;
+        }
         case KILL_SERVER:
         {
             printf("kill server\n");

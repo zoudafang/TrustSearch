@@ -206,6 +206,12 @@ public:
 	void init_filters(uint32_t filter_nums);
 
 	vector<uint32_t> get_rand_keys(int i, int k);
+	std::vector<std::pair<uint32_t, uint32_t>> find_knn(uint64_t query[], int KNN_NUM);
+	unordered_set<uint32_t> cand_filters;
+	void get_cand_knn(sub_info_comp comp, uint32_t i, uint64_t *query, void *res, uint32_t KNN_NUM);
+	void get_knn_res(uint32_t fullkey_index, uint64_t *query, void *res, uint32_t KNN_NUM);
+	uint32_t max_knn_num = 64;
+	uint32_t *ids_block = new uint32_t[70000];
 };
 
 void find_topk(uint64_t query[]);

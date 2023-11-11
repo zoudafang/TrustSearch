@@ -90,4 +90,5 @@ int popcount(T x)
         // static_assert(false, "Unsupported type");
     }
 }
+
 #endif

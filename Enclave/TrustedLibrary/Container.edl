@@ -19,6 +19,8 @@ enclave {
         public void ecall_send_query_enc([in,count=batch_size,size=1]void *dataptr, size_t batch_size, int is_img_dataset);
         
         public void ecall_init_id_index([user_check]void* id_index,uint32_t idx);
+
+        public void encall_find_knn([in,count=len,size=16]void *dataptr,[out,size=4,count=len_res]  uint32_t *res, uint32_t len, uint32_t len_res, uint64_t hammdist);
     };
 
     untrusted {

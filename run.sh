@@ -3,12 +3,12 @@
 # myArray=(32 64 128 256 512 1024)
 # myArray=(4 8 16 )
 
-for i in {4..4}
+for i in {5..5}
 do
 echo "+++++++++++dist $((6+2*i))+++++++++++++\n" >> res.txt
-for t in {1..3}
+for t in {2..2}
 do
-# for j in {0..2}
+# for j in {1..5}
 # do
 
 # new_value=${myArray[j]}   #$((10+10*j))  # 替换为你想要的新值
@@ -18,11 +18,11 @@ do
 # for j in {1..5}
 # do
 
-# new_value=$((2+2*j))  # 替换为你想要的新值
+# new_value=$((3+2*j))  # 替换为你想要的新值
 # file_path="./include/constVar.h"
 # sed -i "s/const uint32_t SUBINDEX_NUM = [0-9]\+;/const uint32_t SUBINDEX_NUM = $new_value;/" "$file_path"
 
- echo "data $((t)) PAGE_SIZE $((new_value)) " >> res.txt  #subindex $((new_value))
+ echo "data $((t)) SUBINDEX_NUM $((new_value)) " >> res.txt  #subindex $((new_value))
 
 # make clean
 # make SGX_DEBUG=0
@@ -62,18 +62,19 @@ do
 # ./app  -h $((4+4*i)) -s 150 -d 4 -t $((t-1)) -l 5000000 -c 0 >> res.txt #3 4
 # make clean
 
+
 # make clean
 # make SGX_DEBUG=0
 # /opt/intel/sgxsdk/bin/x64/sgx_sign sign -key Enclave/Enclave_private_test.pem -enclave enclave.so -out enclave.signed.so -config Enclave/Enclave.config.xml
 # echo "-------------------------"
-# ./app  -h $((4+4*i)) -s 50000000 -d 4 -t $((t-1)) -l 500000 -c 40 >> res.txt
+# ./app  -h $((4+4*i)) -s 5000000 -d 4 -t $((t-1)) -l 3000000 -c 40 >> res.txt #3 4
 # make clean
 
-make clean
+make clean        #    $cautious for testCS
 make SGX_DEBUG=0
 /opt/intel/sgxsdk/bin/x64/sgx_sign sign -key Enclave/Enclave_private_test.pem -enclave enclave.so -out enclave.signed.so -config Enclave/Enclave.config.xml
 echo "-------------------------"
-./app  -h $((4+4*i)) -s 50 -d 4 -t $((t-1)) -l 30 -c 40 >> res.txt #3 4
+./app  -h $((4+4*i)) -s 50 -d 4 -t $((t-1)) -l 3000000 -c 40 >> res.txt #3 4
 make clean
 
 # make clean
@@ -90,9 +91,9 @@ make clean
 # ./app  -h $((4+4*i)) -s 150 -d 6 -t $((t-1)) -l 50000 -c 0 >> res.txt
 # make clean
 
+done
+done
 # done
-done
-done
 
 
 

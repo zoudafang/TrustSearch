@@ -27,7 +27,7 @@ static const char CLIENT_KEY[] = "../../key/client/client.key";
 static const char CA_CERT[] = "key/ca/ca.crt";              // 注意可执行文件和key文件的相对路径
 static const char CA_CERT_CLIENT[] = "../../key/ca/ca.crt"; // 注意可执行文件和key文件的相对路径
 static const char SERVER_IP[] = "192.168.5.105";
-static const int SERVER_PORT = 8084;
+static const int SERVER_PORT = 8090;
 static const uint32_t THREAD_STACK_SIZE = 8 * 1024 * 1024;
 
 static const uint32_t DATA_LEN = 5124668; // 5124668;
@@ -75,6 +75,7 @@ enum QUERY_ETPE
     QUERY_BATCH,
     SERVER_RUN,
     KILL_SERVER,
+    QUERY_KNN,
 };
 static std::string p = "kl9DWMr4us0PcFeZ";
 static uint8_t *const_sessionKey = reinterpret_cast<uint8_t *>(const_cast<char *>(p.c_str()));

@@ -22,7 +22,6 @@ uint64_t containers::keybit = 128;
 uint32_t containers::test_size = 1000;
 uint32_t containers::initialize_size = 450000;
 uint32_t containers::sub_map_size = 4500;
-uint32_t hash_seed[4]{0x12345678, 0x23456789, 0x34567890, 0x45678901};
 
 // void log(const char *file_name, const char *function_name, size_t line, const char *fmt, ...) {
 // #ifdef DEBUG
@@ -69,6 +68,7 @@ namespace
 	uint64_t *times = new uint64_t[2];
 	uint32_t resize_times = 0;
 	uint64_t resize_size = 0, candi_num = 0;
+	uint32_t hash_seed[4]{0x12345678, 0x23456789, 0x34567890, 0x45678901};
 }
 
 void get_times(int begin, int i)
@@ -600,11 +600,12 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 						tmp_info = visited_keys.back();
 						visited_keys.pop_back();
 						gen_candidate(candidate, tmp_info, visited_keys, visited_keys, i, sub[i], dt);
-						dt += inc_max_dist[i] + 1;
+						dt += inc_max_dist[i]; //+ 1
 					}
 				}
 			}
 		}
+		// dt++; // dt begin from 1 cautious 11-10
 		tmp_clrs.pop_back();
 		get_times(0, 0);
 
@@ -668,13 +669,16 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 			std::sort(tmp_clrs.begin(), tmp_clrs.end(), [](cluster_info &a, cluster_info &b)
 					  { return a.node.begin_idx < b.node.begin_idx; });
 			uint16_t tmp_min = 0, idx = 0, tmp_d;
-			uint32_t tmpkey_;
+			uint32_t tmpkey_, max_find_dist;
 			for (int x = 0; x < existed_subkeys.size(); x++)
 			{
 				tmp_min = UINT8_MAX;
 				tmpkey_ = existed_subkeys[x].subkey;
+				max_find_dist = min_dist0 + existed_subkeys[x].dist * 2;
 				for (int t = 0; t < tmp_clrs.size(); t++)
 				{
+					if (tmp_clrs[t].dist > max_find_dist)
+						continue;
 					tmp_d = popcount(tmp_clrs[t].node.subkey ^ tmpkey_);
 					if (tmp_d < tmp_min)
 					{
@@ -782,6 +786,8 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 
 						auto &val = existed_subkeys[j];
 
+						if (val.max_dist == 0)
+							continue;
 						auto &tmpsub1 = val.subkey;
 						if (reached_subkey.find(tmpsub1) != reached_subkey.end()) // val.dist <= begin_dist || error
 							continue;
@@ -834,6 +840,8 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 				{
 					for (auto &val : existed_subkeys)
 					{
+						if (val.max_dist == 0)
+							continue;
 						auto &tmpsub1 = val.subkey;
 						if (val.dist < dt1 || val.max_dist == 0) //|| visited_subkeys.find(tmpsub1) != visited_subkeys.end()
 							continue;
@@ -877,8 +885,13 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 		vector<sub_info_comp> tmpv;
 		std::map<uint32_t, int> tmpm;
 		// the node finded by linear list or hashmap, to get candidate's id
+
+		reached_subkey.clear(); // 复用reached_keys（先clear），如果已经查找到了key对应的ids，则不需要再次gen_cand()
 		for (int y = 0; y < visited_keys.size(); y += 1)
 		{
+			auto val = reached_subkey.find(visited_keys[y].sub_key);
+			if (val != reached_subkey.end() && val->second == -1)
+				continue;
 			gen_candidate(candidate, visited_keys[y], tmp_visit, tmpv, i, sub[i], dt);
 		}
 		visited_keys.clear();
@@ -1079,6 +1092,7 @@ void containers::gen_candidate(std::unordered_set<uint32_t> &cand, sub_info_comp
 					times--;
 					if (times == 0)
 					{
+						reached_subkey[comp.sub_key] = -1;
 						cand.emplace_hint(cand.begin(), -out_tmp[t]);
 						for (int l = t + 1; l < tmp_size; l++)
 						{
@@ -1122,6 +1136,7 @@ void containers::gen_candidate(std::unordered_set<uint32_t> &cand, sub_info_comp
 	}
 	else
 	{
+		reached_subkey[comp.sub_key] = -1;
 		for (int j = 0; j < tmp_size; j++)
 		{
 			cand.emplace_hint(cand.begin(), out_tmp[j]);
@@ -1164,7 +1179,7 @@ void containers::gen_candidate(std::unordered_set<uint32_t> &cand, sub_info_comp
 			}
 		}
 	}
-	reached_subkey[comp.sub_key] = comp.skiplen;
+	// reached_subkey[comp.sub_key] = comp.skiplen;//cautious for 11-9
 }
 void containers::test()
 {
@@ -1190,7 +1205,19 @@ void containers::test()
 		temp_key[0] = itx.first;
 		temp_key[1] = itx.second;
 		find_sim(temp_key, 0); // test_targets[i]
-							   // i++;
+		// 					   // i++;
+		int k = 100;
+		// auto res = find_knn(temp_key, k);
+		// uint64_t cmp_hamm[2], tmp_fullkey[2];
+		// for (int i = 0; i < res.size(); i++)
+		// {
+		// 	// auto got_out = full_index[res[i]];
+		// 	// cmp_hamm[0] = temp_key[0] ^ (got_out.fullkey[0]);
+		// 	// cmp_hamm[1] = temp_key[1] ^ (got_out.fullkey[1]);
+		// 	// uint64_t count = bitset<64>(cmp_hamm[0]).count() + bitset<64>(cmp_hamm[1]).count();
+		// 	printf("count %d dist %d\n", res[i].first, res[i].second);
+		// }
+		// break;
 	}
 
 	// 用线性方式查找，观察数据集中特征值分布
@@ -2516,7 +2543,7 @@ void containers::make_clusters()
 						}
 					}
 					// combine subkey后产生的block大小不应该大于aggre_size
-					if (is_comb_clr && (temp_vec.size() + 1 + same_num) < PAGE_SIZE)
+					if (is_comb_clr && (temp_vec.size() + 1 + same_num) < PAGE_SIZE && false)
 					{
 						num2++;
 						tmp_keys.push_back(temp_key);
@@ -2853,7 +2880,7 @@ void containers::make_clusters()
 							}
 						}
 						// combine subkey后产生的block大小不应该大于aggre_size
-						if (is_comb_clr && (temp_vec.size() + 1 + same_num) < PAGE_SIZE)
+						if (is_comb_clr && (temp_vec.size() + 1 + same_num) < PAGE_SIZE && false)
 						{
 							temp_subkey.push_back(temp_key);
 							temp_subkey.push_back(temp_vec.size() - pre_size);
@@ -3758,3 +3785,49 @@ void containers::init_ids_cache()
 	}
 	printf("ids_cache len%d cap%d\n", lru_cache.len, lru_cache.capacity);
 };
+
+void encall_find_knn(void *dataptr, uint32_t *res, uint32_t len, uint32_t len_res, uint64_t hammdist)
+{
+	// cont.changeHammingDist(hammdist);
+	cont.successful_num = 0;
+	EcallCrypto *cryptoObj = new EcallCrypto(CIPHER_TYPE, HASH_TYPE);
+	EVP_MD_CTX *mdCtx = EVP_MD_CTX_new();
+	EVP_CIPHER_CTX *cipherCtx_ = EVP_CIPHER_CTX_new();
+	uint8_t *sessionKey_ = const_sessionKey;
+	uint8_t *dataE = reinterpret_cast<uint8_t *>(dataptr);
+	int dataSize = sizeof(uint64_t) * len * 2;
+	cryptoObj->SessionKeyDec(cipherCtx_, dataE,
+							 dataSize, sessionKey_,
+							 dataE);
+
+	printf("query batch len %d\n", len_res);
+	uint8_t *res_old = reinterpret_cast<uint8_t *>(res); // res=query times + success num of query i + targets of query i
+	Query_batch_t query;
+	query.sendData = res;
+	*(query.sendData) = len; // write query times to res
+	query.index = query.sendData + sizeof(uint32_t);
+	query.dataBuffer = query.sendData + sizeof(uint32_t) * (len + 1);
+	uint64_t *data = reinterpret_cast<uint64_t *>(dataE);
+	uint64_t temp2[2];
+	printf("query len=%d\n", len);
+	for (int i = 0; i < len; i++)
+	{
+		temp2[0] = data[2 * i];
+		temp2[1] = data[2 * i + 1];
+		auto res_set = cont.find_knn(temp2, hammdist);
+		query.index[i] = res_set.size(); // write success num of query i to res
+										 // printf("res_set.size()=%d\n",res_set.size());
+
+		// for (auto &it : res_set)
+		// {
+		// 	*(query.dataBuffer) = it;
+		// 	query.dataBuffer++; // write targets of query i to res
+		// }
+	}
+
+	printf("successful_num=%d\n", cont.successful_num);
+	//*len=res_set.size();
+	cryptoObj->SessionKeyEnc(cipherCtx_, (uint8_t *)res_old, len_res * sizeof(uint32_t), sessionKey_, (uint8_t *)res_old);
+	// printf("Successfully found  photos! successful_num=%d.\n",res_set.size());
+	printf("sign_data_size %d\n", sign_data.size());
+}
