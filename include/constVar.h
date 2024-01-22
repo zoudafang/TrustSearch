@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#define CACHE_SIZE 5000 //
 // the type of chunker
 enum CHUNKER_TYPE
 {
@@ -26,7 +27,7 @@ static const char CLIENT_CERT[] = "../../key/client/client.crt";
 static const char CLIENT_KEY[] = "../../key/client/client.key";
 static const char CA_CERT[] = "key/ca/ca.crt";              // 注意可执行文件和key文件的相对路径
 static const char CA_CERT_CLIENT[] = "../../key/ca/ca.crt"; // 注意可执行文件和key文件的相对路径
-static const char SERVER_IP[] = "192.168.5.105";
+static const char SERVER_IP[] = "192.168.5.104";
 static const int SERVER_PORT = 8090;
 static const uint32_t THREAD_STACK_SIZE = 8 * 1024 * 1024;
 
@@ -37,13 +38,16 @@ static const uint32_t SEND_BATCH_LEN = 512;
 static const uint32_t ENC_BATCH_SIZE_IMG = 100 * (16 + 8); // 按照batch加密img数据集，<feature, target>
 static const uint32_t ENC_BATCH_SIZE_SIFT = 100 * 16;      // <feature>
 
-static const uint32_t PAGE_SIZE = 64;   // 4 * 4; // 1024*4
+static const uint32_t PAGE_SIZE = 64; // 4 * 4; // 1024*4
+static const uint32_t PAGE_SIZE_B = PAGE_SIZE * 4;
 static const uint32_t SUBINDEX_NUM = 6; // byte of subkey
 
 static const uint32_t MASK_INF = 0x80000000; // infrequent keys
 static const uint32_t MASK_SIM = 0x40000000; // similar keys
 static const uint32_t MASK_LEN = 0x3fffffff;
 
+static const uint32_t MAX_CLIENT_NUM = 10000;
+static uint32_t CLIENT_NUM = 7;
 struct key_find
 {
     uint32_t subkey;
@@ -52,6 +56,7 @@ struct key_find
         uint16_t dist;     // 16bit:dist,16bit:max_dist
         uint16_t max_dist; /* data */
     };
+    uint32_t clr_idx;
 };
 
 typedef struct ids_node // unchanged for ocall page block
@@ -65,6 +70,7 @@ struct LRU_cache
 {
     uint32_t capacity;
     uint32_t len;
+    uint32_t remain_size;
     ids_node *index_head;
     ids_node *index_tail;
 };
@@ -76,13 +82,14 @@ enum QUERY_ETPE
     SERVER_RUN,
     KILL_SERVER,
     QUERY_KNN,
+    MULTI_CLIENT
 };
 static std::string p = "kl9DWMr4us0PcFeZ";
 static uint8_t *const_sessionKey = reinterpret_cast<uint8_t *>(const_cast<char *>(p.c_str()));
 
 static std::string key1 = "cs9DWMr4us0Pc231";
 static uint8_t *const_dataKey = reinterpret_cast<uint8_t *>(const_cast<char *>(key1.c_str()));
-static const uint32_t QUERY_SIZE = 5000;
+static const uint32_t QUERY_SIZE = 100000;
 
 enum INDEX_TYPE_SET
 {

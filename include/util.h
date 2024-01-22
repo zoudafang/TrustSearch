@@ -28,22 +28,34 @@ struct cluster_node
 {
     uint32_t subkey;
     uint32_t begin_idx;
-    bool is_combined; // 是否是合并后的subkey
+    uint32_t end;
+    uint32_t dist;
+    bool is_combined;    // 是否是合并后的subkey
+    uint32_t group_size; // the items number of this cluster
 };
+
+// typedef struct cluster_node cluster_info;
 struct cluster_info
 {
     cluster_node node;
     uint32_t end;
     uint32_t dist;
 };
+
 // compress sub_information, begin is the begin of sub_key in sub_identifiers[]
 typedef struct sub_info_comp
 {
     uint32_t sub_key;
-    uint32_t skiplen; // begin < 0 ,when some sub_keys are combined to one sub_key; begin>=0,this sub_key is only represent one sub_key
-    int length;
+    uint32_t skiplen;
+    int length; // begin < 0 ,when some sub_keys are combined to one sub_key; begin>=0,this sub_key is only represent one sub_key
 } sub_info_comp;
 
+typedef struct fetch_ids_node
+{
+    sub_info_comp sub_info;
+    key_find &kf;
+    uint32_t cache_key;
+} fetch_ids_node;
 inline void split(uint32_t *chunks, const UINT8 *code, int m, int mplus, int b)
 {
     uint32_t temp = 0x0;
@@ -69,6 +81,18 @@ inline void split(uint32_t *chunks, const UINT8 *code, int m, int mplus, int b)
     }
 }
 
+inline uint32_t get_search_numbers(uint32_t m_bit, uint32_t dist)
+{
+    int res = 1, t = 1;
+    for (int i = dist; i > 0; i--)
+    {
+        res *= m_bit;
+        t *= i;
+        m_bit--;
+    }
+    res = res / t;
+    return res;
+}
 template <typename T>
 int popcount(T x)
 {

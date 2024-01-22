@@ -186,7 +186,9 @@ int SGX_CDECL main(int argc, char *argv[])
     uint32_t threshold = 8, clr_size = 100, clr_dist = 5, dataSet = 0, comb_num = 50, aggre_size = 50, cache = 20000;
     int option;
     int invalid = 0;
-    const char optString[] = "h:s:d:t:l:c:";
+    const char optString[] = "h:s:d:t:l:c:v:b:n:m:";
+    int kmodes = 50, steps = 20, is_var = 1;
+    float ktimes = 0.5;
 
     while ((option = getopt(argc, argv, optString)) != -1)
     {
@@ -222,10 +224,30 @@ int SGX_CDECL main(int argc, char *argv[])
             aggre_size = atoi(optarg);
             break;
         }
+        case 'v':
+        {
+            kmodes = atoi(optarg);
+            break;
+        }
+        case 'b':
+        {
+            steps = atoi(optarg);
+            break;
+        }
+        case 'n':
+        {
+            is_var = atoi(optarg);
+            break;
+        }
+        case 'm':
+        {
+            ktimes = atof(optarg);
+            break;
+        }
         break;
         }
     }
-    ecall_change_para(global_eid, dataSet, threshold, clr_size, clr_dist, comb_num, aggre_size);
+    ecall_change_para(global_eid, dataSet, threshold, clr_size, clr_dist, comb_num, aggre_size, kmodes, steps, is_var, ktimes);
 
     std::vector<std::pair<u_int64_t, u_int64_t>> res;
     std::vector<uint32_t> targets;
@@ -313,7 +335,20 @@ int SGX_CDECL main(int argc, char *argv[])
 
     double costTime = double(endTime - startTime) / CLOCKS_PER_SEC;
     printf("The test took %lf seconds.\n", costTime);
-    start_server();
+
+    for (int i = 0; i < 1; i++)
+    {
+        for (int t = 0; t < 6; t++)
+        { // 12+8*t
+            ecall_change_para(global_eid, dataSet, 8 + 4 * t, clr_size, clr_dist, comb_num, aggre_size, kmodes, steps, is_var, ktimes);
+            startTime = clock();
+            test_from_enclave();
+            endTime = clock();
+            costTime = double(endTime - startTime) / CLOCKS_PER_SEC;
+            printf("The test took %lf seconds.\n", costTime);
+        }
+    }
+    // start_server();
 
     /* Destroy the enclave */
     sgx_destroy_enclave(global_eid);

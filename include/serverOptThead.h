@@ -21,6 +21,7 @@
 #include <openssl/ec.h>
 #include "../App/App.h"
 #include "../App/Enclave_u.h"
+#include <atomic>
 // #include "../include/sessionKeyExchange.h"
 using namespace std;
 
@@ -29,6 +30,9 @@ class ServerOptThread
 private:
     string myName_ = "ServerOptThread";
     string logFileName_ = "server-log";
+
+    std::atomic<int> client_id_;
+    std::atomic<int> finish_clr_num_;
 
     // handlers passed from outside
     SSLConnection *dataSecureChannel_;

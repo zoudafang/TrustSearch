@@ -74,8 +74,8 @@ public:
 
    // Allowable min/max size of the bloom filter in bits
    unsigned long long int minimum_size;
-   unsigned long long int maximum_size;
 
+   unsigned long long int maximum_size;
    // Allowable min/max number of hash functions
    unsigned int minimum_number_of_hashes;
    unsigned int maximum_number_of_hashes;
@@ -147,6 +147,7 @@ public:
 
       optp.table_size += (((optp.table_size % bits_per_char) != 0) ? (bits_per_char - (optp.table_size % bits_per_char)) : 0);
 
+      printf(" bloom size %lld", optp.table_size >> 3);
       if (optp.number_of_hashes < minimum_number_of_hashes)
          optp.number_of_hashes = minimum_number_of_hashes;
       else if (optp.number_of_hashes > maximum_number_of_hashes)

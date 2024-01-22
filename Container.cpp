@@ -69,38 +69,32 @@ namespace
 	uint32_t resize_times = 0;
 	uint64_t resize_size = 0, candi_num = 0;
 	uint32_t hash_seed[4]{0x12345678, 0x23456789, 0x34567890, 0x45678901};
-
-	long long times_[5] = {0};
+	uint32_t find_clrs_num = 0;
 }
 
 void get_times(int begin, int i)
 {
 	if (begin)
 	{
-		// ocall_get_timeNow(times);
+		ocall_get_timeNow(times);
 	}
 	else
 	{
-		// ocall_get_timeNow(times + 1);
+		ocall_get_timeNow(times + 1);
 		bd_time[i] += times[1] - times[0];
 		*times = *(times + 1);
 	}
 }
 containers::containers()
 {
-	hammdist.resize(MAX_CLIENT_NUM);
-	sub_hammdist.resize(MAX_CLIENT_NUM);
-
-	hammdist[0] = 8;
 	sub_index_num = SUBINDEX_NUM;
 	sub_keybit = ceil((double)keybit / sub_index_num);
 	sub_index_plus = keybit - sub_index_num * (sub_keybit - 1);
 	// sub_hammdist=hammdist/sub_index_num;
 	fullkey_len = keybit / 32;
 
-	// for (int j = 0; j < sub_index_num; j++)
-	sub_hammdist[0] = floor((double)hammdist[0] / sub_index_num);
-
+	for (int j = 0; j < sub_index_num; j++)
+		sub_hammdist[j] = floor((double)hammdist / sub_index_num);
 	// the sum of sub_hammdist is hammdist - sub_index_num + 1
 	// for (int j = hammdist; j > 0;)
 	// {
@@ -142,9 +136,9 @@ bool compareFirst_fullkey(const info_uncomp &p, info_uncomp &x)
 uint32_t mask = 0xffffffff;
 bool customCompare(const sub_information &p1, const sub_information &p2)
 {
-	if ((p1.sub_key) != (p2.sub_key))
+	if ((mask & p1.sub_key) != (mask & p2.sub_key))
 	{
-		return (p1.sub_key) < (p2.sub_key);
+		return (mask & p1.sub_key) < (mask & p2.sub_key);
 	}
 	// std::hash<uint32_t> ishash;
 	// if (ishash(p1.sub_key) != ishash(p2.sub_key))
@@ -163,9 +157,9 @@ bool customCompare(const sub_information &p1, const sub_information &p2)
 }
 bool compareFirst(const sub_information &p, uint32_t x)
 {
-	if ((p.sub_key) != (x))
+	if ((mask & p.sub_key) != (mask & x))
 	{
-		return (p.sub_key) < (x);
+		return (mask & p.sub_key) < (mask & x);
 	}
 	// std::hash<uint32_t> ishash;
 	// if (ishash(p.sub_key) != ishash(x))
@@ -188,9 +182,9 @@ bool customCompare_comp(const sub_info_comp &p1, const sub_info_comp &p2)
 }
 bool compareFirst_comp(const sub_info_comp &p, uint32_t x)
 {
-	if ((p.sub_key) != (x))
+	if ((mask & p.sub_key) != (mask & x))
 	{
-		return (p.sub_key) < (x);
+		return (mask & p.sub_key) < (mask & x);
 	}
 	// std::hash<uint32_t> ishash;
 	// if (ishash(p.sub_key) != ishash(x))
@@ -366,13 +360,12 @@ void containers::initialize()
 	{
 		data_len = SIFT_LEN;
 	}
-	// full_key_sorted.reserve(DATA_LEN);
 	containers::initialize_size = data_len;
-	// full_key_sorted.reserve(data_len);
-	// full_index.reserve(6000000);
-	// sub_index_liner = new vector<sub_information>[SUBINDEX_NUM];
-	// for (int i = 0; i < SUBINDEX_NUM; i++)
-	// 	sub_index_liner[i].reserve(initialize_size);
+	full_key_sorted.reserve(data_len);
+	full_index.reserve(data_len + 1000);
+	sub_index_liner = new vector<sub_information>[SUBINDEX_NUM];
+	for (int i = 0; i < SUBINDEX_NUM; i++)
+		sub_index_liner[i].reserve(initialize_size);
 
 	containers::sub_map_size = initialize_size / 2000; // initialize_size//1500,2500,1000
 	for (int i = 0; i < 4; i++)
@@ -402,18 +395,16 @@ void containers::initialize()
 	// EVP_MD_CTX *mdCtx = EVP_MD_CTX_new();
 	// EVP_CIPHER_CTX *cipherCtx_ = EVP_CIPHER_CTX_new();
 	uint8_t *dataKey_ = const_dataKey;
-	// tmp_ids_block = new uint8_t[1024 * 300];
+	tmp_ids_block = new uint8_t[1024 * 300];
 
 	ids_node *entry = new ids_node();
 	entry->next = nullptr;
 	entry->pre = nullptr;
 	lru_cache.index_head = entry;
 	lru_cache.index_tail = entry;
-	// lru_cache.capacity = 5000;
-	// exist_ids = new ids_node[lru_cache.capacity];
+	lru_cache.capacity = 5000;
+	exist_ids = new ids_node[lru_cache.capacity];
 	lru_cache.len = 0;
-
-	// delete cryptoObj;
 	return;
 }
 void containers::get_test_pool()
@@ -429,9 +420,9 @@ void containers::get_test_pool()
 		test_pool.push_back(tmp_test_pool[index1]);
 		// test_targets.push_back(tmp_test_targets[index1]);
 		auto tmp = tmp_test_pool[index1];
-		// tmp_test_pool[index1] = tmp_test_pool[end - 1];
-		// // tmp_test_targets[index1] = tmp_test_targets[end - 1];
-		// end--;
+		tmp_test_pool[index1] = tmp_test_pool[end - 1];
+		// tmp_test_targets[index1] = tmp_test_targets[end - 1];
+		end--;
 	}
 
 	uint64_t temp_key[2] = {0};
@@ -442,67 +433,62 @@ void containers::get_test_pool()
 	uint32_t range = initialize_size; // range query
 	sgx_read_rand(reinterpret_cast<unsigned char *>(&begin), sizeof(begin));
 
-	// // for temporal Locality
-	// vector<uint32_t> local_list;
-	// uint32_t temp;
-	// for (int i = 0; i < 100; i++)
-	// {
-	// 	sgx_read_rand(reinterpret_cast<unsigned char *>(&temp), sizeof(temp));
-	// 	local_list.push_back(temp % initialize_size);
-	// }
+	// for temporal Locality
+	vector<uint32_t> local_list;
+	uint32_t temp;
+	for (int i = 0; i < 100; i++)
+	{
+		sgx_read_rand(reinterpret_cast<unsigned char *>(&temp), sizeof(temp));
+		local_list.push_back(temp % initialize_size);
+	}
 
-	// for (int i = 0; i < initialize_size; i++)
-	// {
-	// 	if (test_pool.size() >= test_size)
-	// 	{
-	// 		return;
-	// 	}
-	// 	index = (begin + (i * skip) % range);
-	// 	if (i % 20 == 0)
-	// 	{
-	// 		// sgx_read_rand(reinterpret_cast<unsigned char *>(&begin), sizeof(begin));
-	// 	}																		 // space locality
-	// 	sgx_read_rand(reinterpret_cast<unsigned char *>(&index), sizeof(index)); // rand query
-	// 	// index=local_list[index%local_list.size()];//temporal locality
-	// 	index = index % initialize_size;
-	// 	// auto it = full_index[index];
-	// 	auto it = full_key_sorted[index];
-	// 	temp_key[0] = it.fullkey[0];
-	// 	temp_key[1] = it.fullkey[1];
-	// 	int h = 0, y = 0;
-	// 	uint64_t t = 1;
-	// 	unsigned char rand[3] = {0};
-	// 	sgx_read_rand(rand, 2);
-	// 	h = rand[0] % 3;
-	// 	for (int i = 0; i < h; i++)
-	// 	{
-	// 		y = rand[i + 1] % 64;
-	// 		temp_key[0] = temp_key[0] ^ (t << y);
-	// 		temp_key[1] = temp_key[1] ^ (t << y);
-	// 	}
-	// 	test_pool.push_back(pair<uint64_t, uint64_t>(temp_key[0], temp_key[1]));
-	// }
+	for (int i = 0; i < initialize_size; i++)
+	{
+		if (test_pool.size() >= test_size)
+		{
+			return;
+		}
+		index = (begin + (i * skip) % range);
+		if (i % 20 == 0)
+		{
+			// sgx_read_rand(reinterpret_cast<unsigned char *>(&begin), sizeof(begin));
+		}																		 // space locality
+		sgx_read_rand(reinterpret_cast<unsigned char *>(&index), sizeof(index)); // rand query
+		// index=local_list[index%local_list.size()];//temporal locality
+		index = index % initialize_size;
+		// auto it = full_index[index];
+		auto it = full_key_sorted[index];
+		temp_key[0] = it.fullkey[0];
+		temp_key[1] = it.fullkey[1];
+		int h = 0, y = 0;
+		uint64_t t = 1;
+		unsigned char rand[3] = {0};
+		sgx_read_rand(rand, 2);
+		h = rand[0] % 3;
+		for (int i = 0; i < h; i++)
+		{
+			y = rand[i + 1] % 64;
+			temp_key[0] = temp_key[0] ^ (t << y);
+			temp_key[1] = temp_key[1] ^ (t << y);
+		}
+		test_pool.push_back(pair<uint64_t, uint64_t>(temp_key[0], temp_key[1]));
+	}
 }
-int zero_num = 0;
-
-int times_gen = 0, combs = 0, combs_hit = 0, find_clrs_num = 0;
-std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_target, int client_id) // ocall_get_timeNow
+std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_target)
 {
 	uint64_t *total_time_now = new uint64_t[1];
 	long long total_begin_time = 0, total_end_time = 0;
-	// ocall_get_timeNow(total_time_now);
+	ocall_get_timeNow(total_time_now);
 	total_begin_time = *total_time_now;
 
 	unordered_set<uint32_t> candidate;
-	std::unordered_map<uint32_t, int> reached_subkey;
-
+	unordered_set<uint32_t> candi_new;
 	candidate.clear();
-	candidate.reserve(50000);
+	candidate.reserve(5000);
 	uint64_t tmpquery[2] = {0};
 	tmpquery[0] = query[0];
 	tmpquery[1] = query[1];
 	uint32_t sub[SUBINDEX_NUM] = {0};
-
 	split(sub, reinterpret_cast<uint8_t *>(tmpquery), sub_index_num, sub_index_plus, sub_keybit);
 	// get_sub_fingerprint32(sub, tmpquery);
 
@@ -512,7 +498,7 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 	// tsl::hopscotch_map<uint32_t, std::vector<uint32_t>>::iterator got;
 	unordered_map<uint32_t, std::vector<uint32_t>>::iterator got;
 
-	vector<fetch_ids_node> visited_keys; // first: subkeys of candidates, second: begin index of sub_identifiers
+	vector<sub_info_comp> visited_keys; // first: subkeys of candidates, second: begin index of sub_identifiers
 	sub_info_comp tmp_info;
 
 	static uint64_t bloomHit = 0;
@@ -530,26 +516,25 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 	static int hittt = 0;
 	static int misss = 0;
 	int out_key[1], sub_key_I[2];
-	uint32_t tmp_hash[2], hash_size = ((bloom_hash_times >> 2) + (bloom_hash_times & 0x3 != 0) * 4) * INT_SIZE; // ceil(times/4)*4
+	uint32_t tmp_hash[2], hash_size = ((bloom_hash_times >> 2) + (bloom_hash_times & 0x3 != 0) * 4) * uint_size; // ceil(times/4)*4
 	uint8_t tmp_hash_out[32], bloom_hash[hash_size];
 	static uint32_t candiNUM = 0;
 
 	vector<key_find> existed_subkeys;
-	vector<cluster_info> tmp_clrs, bigger_clrs, mid_clrs; // xx;hamm+dist;hamm+dist-1
+	vector<cluster_info> tmp_clrs;
 	cluster_info c_info;
 	unordered_set<uint32_t> visited_subkeys;
 	int begin_ids = 0, dt;
-	uint32_t tmp_dist = 0, tmp_count, tmp_min_idx, min_dist;
-	uint32_t begin_idx, end_idx, lookup_all_size = 0, lookup_radius;
+	uint32_t tmp_dist = 0, tmp_count;
+	uint32_t begin_idx, end_idx, lookup_all_size = 0;
 
 	for (int i = 0; i < SUBINDEX_NUM; i++)
 	{
-		// ocall_get_timeNow(time);
+		ocall_get_timeNow(time);
 		begin_time = *time;
 
 		lookup_all_size = 0;
-		lookup_radius = sub_hammdist[client_id] + max_dist;
-		// get_times(1, 0);
+		get_times(1, 0);
 		tmp_dist = 0;
 		dt = 0;
 		tmp_visit.clear();
@@ -557,220 +542,163 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 		reached_subkey.clear();
 		existed_subkeys.clear();
 		tmp_clrs.clear();
-		bigger_clrs.clear();
-		mid_clrs.clear();
-		visited_keys.clear();
 
-		min_dist = UINT16_MAX;
-		// find the near clusters that may contains the subkey; hamming(subkey, query_sub_key) <= sub_hamm[i]
-		// based on triangular inequality
 		for (int t = 0; t < clr[i].size() - 1; t++)
 		{
 			begin_idx = clr[i][t].begin_idx;
-			end_idx = clr[i][t + 1].begin_idx;
-			tmp_dist = popcount(sub[i] ^ clr[i][t].subkey);
-			lookup_all_size += end_idx - begin_idx;
-
-			c_info.node = clr[i][t];
-			c_info.end = end_idx;
-			c_info.dist = tmp_dist;
-			if (tmp_dist > sub_hammdist[client_id] + max_dist - 2) //- 2 -1
-			{
-				if (tmp_dist == sub_hammdist[client_id] + max_dist - 1)
-				{
-					mid_clrs.push_back(c_info);
-				}
-				else if (tmp_dist == sub_hammdist[client_id] + max_dist)
-				{
-					bigger_clrs.push_back(c_info);
-					// for dist == hammdist+max_dist; it must only contains subkey whose hamm dist from cluster equals max_dist, and dist from subkey equals sub_hamm;
-					// so bigger_clrs's all dist is max_dist
-				}
+			end_idx = (t == clr[i].size() - 1 ? sub_linear_comp[i].size() : clr[i][t + 1].begin_idx);
+			if (t < clr[i].size() - 1 && popcount(sub[i] ^ clr[i][t].subkey) > sub_hammdist[i] + max_dist)
 				continue;
-			}
-			// if (min_dist > c_info.dist)
-			// {
-			// 	min_dist = c_info.dist;
-			// 	tmp_min_idx = tmp_clrs.size();
-			// }
-			// if (c_info.dist == 0)
-			// {
-			// 	zero_num++;
-			// }
+			lookup_all_size += end_idx - begin_idx;
+			c_info = clr[i][t];//.node
+			c_info.end = end_idx;
+			c_info.dist = popcount(sub[i] ^ clr[i][t].subkey);
 			tmp_clrs.push_back(c_info);
 		}
-
-		min_dist = UINT16_MAX;
 		if (tmp_clrs.size())
 		{
 			std::sort(tmp_clrs.begin(), tmp_clrs.end(), [](cluster_info &a, cluster_info &b)
-					  { if(a.dist!=b.dist)return a.dist < b.dist;else return a.node.begin_idx < b.node.begin_idx; });
-			min_dist = tmp_clrs[0].dist;
+					  { return a.dist < b.dist; });
 		}
-		// min_dist = (tmp_clrs.size() > 0 ? tmp_clrs[0].dist : UINT16_MAX);
 		cluster_node tmp_node;
+		uint32_t min_dist = (tmp_clrs.size() > 0 ? tmp_clrs[0].dist : UINT16_MAX);
 
-		c_info.node = clr[i][clr[i].size() - 1];
-		c_info.end = sub_linear_comp[i].size();
-		c_info.dist = 0; // popcount(sub[i] ^ clr[i][clr[i].size() - 1].subkey);
-		tmp_clrs.push_back(c_info);
 		uint32_t tmpkey = sub[i];
+
+		c_info = clr[i][clr[i].size() - 1];
+		c_info.end = sub_linear_comp[i].size();
+		c_info.dist = popcount(sub[i] ^ clr[i][clr[i].size() - 1].subkey);
+		tmp_clrs.push_back(c_info);
 
 		for (int t = 0; t < bloom_hash_times; t += 4)
 		{
 			tmp_hash[0] = sub[i];
 			tmp_hash[1] = i + t * sub_index_num * 2;
-			MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + t * INT_SIZE);
-			// memcpy(bloom_hash + t * INT_SIZE, tmp_hash_out, std::min(bloom_hash_times - t, (uint32_t)4) * INT_SIZE);
+			MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + t * uint_size);
+			// memcpy(bloom_hash + t * uint_size, tmp_hash_out, std::min(bloom_hash_times - t, (uint32_t)4) * uint_size);
 		}
-		if (filters->contains(bloom_hash, bloom_hash_times * INT_SIZE)) // filters.contains(bloom_hash, bloom_hash_times * INT_SIZE)
+		if (filters.contains(bloom_hash, bloom_hash_times * uint_size)) // filters.contains(bloom_hash, bloom_hash_times * uint_size)
 		{
-			if (sub_hammdist[client_id] <= 1 && tmp_clrs.size() == 1 && mid_clrs.size()) // tmp-clrs只有stash，可以从bigger里面查找
+			for (int t = 0; t < tmp_clrs.size(); t++) // find 0,实际上只需要考虑stash和最近的，因为最近的一定是最小的
 			{
-				tmp_node = mid_clrs[0].node;
-				begin_idx = tmp_node.begin_idx;
-				end_idx = mid_clrs[0].end;
+				if (tmp_clrs[t].dist > tmp_clrs[0].dist)
+					break;
+				if (tmp_clrs[t].dist > max_dist)
+				{
+					t = tmp_clrs.size() - 1;
+				} // cautious
+				tmp_node = tmp_clrs[t];
+				begin_idx = tmp_clrs[t].begin_idx;
+				end_idx = tmp_clrs[t].end;
+
 				auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpkey, compareFirst_comp);
-				if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpkey || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+				if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
 				{
-					key_find kf{0, 0, 0};
-					// visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
-					gen_candidate(kf, candidate, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
-				}
-			}
-			else if (sub_hammdist[client_id] <= 0 && tmp_clrs.size() == 1 && bigger_clrs.size()) // tmp-clrs只有stash，可以从bigger里面查找
-			{
-				for (int id = 0; id < 1; id++)
-				{
-					tmp_node = bigger_clrs[id].node;
-					begin_idx = tmp_node.begin_idx;
-					end_idx = bigger_clrs[id].end;
-					auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpkey, compareFirst_comp);
-					if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpkey || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+					key_find tmp{0, 0, 0};
+					visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
+					begin_ids = its->length;
+					if (begin_ids & MASK_SIM)
 					{
-						key_find kf{0, 0, 0};
-						// visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
-						gen_candidate(kf, candidate, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
+						tmp_info = visited_keys.back();
+						visited_keys.pop_back();
+						gen_candidate(tmp, candidate, tmp_info, visited_keys, visited_keys, i, sub[i], dt);
+						dt += inc_max_dist[i]; //+ 1
 					}
 				}
 			}
-			else
-			{
-				if (min_dist > max_dist)
+		}
+		// dt++; // dt begin from 1 cautious 11-10
+		tmp_clrs.pop_back();
+		get_times(0, 0);
+
+		uint32_t find_max_d = std::min(min_dist + sub_hammdist[i], (uint64_t)max_dist), tmp_dist = min_dist; // 这个find-max-d是不是太大了，应该写在mindist增加之前
+
+		for (int t = dt; t <= sub_hammdist[i]; t++)
+		{
+			int tmp1, tmp2, tmp3, tmp4 = 1;
+			int tmp = 0;
+			uint32_t tmpx = 0;
+			int curb = 32;
+			int power[100];
+			int s = t, tt = 0;
+			uint32_t bitstr = 0; // the bit-string with s number of 1s
+			for (int i = 0; i < s; i++)
+				power[i] = i;	 // power[i] stores the location of the i'th 1
+			power[s] = curb + 1; // used for stopping criterion (location of (s+1)th 1)
+
+			int bit = s - 1; // bit determines the 1 that should be moving to the left
+
+			while (true)
+			{ // the loop for changing bitstr
+				if (bit != -1)
 				{
-					tmp_min_idx = tmp_clrs.size() - 1;
+					bitstr ^= (power[bit] == bit) ? (uint32_t)1 << power[bit] : (uint32_t)3 << (power[bit] - 1);
+					power[bit]++;
+					bit--;
 				}
 				else
-					tmp_min_idx = 0;
-				// for (int t = 0; t < tmp_clrs.size(); t++) // find 0,实际上只需要考虑stash和最近的，因为最近的一定是最小的
 				{
-					// if (tmp_clrs[t].dist > tmp_clrs[0].dist)
-					// 	break;
-					// if (tmp_clrs[t].dist > max_dist)
-					// {
-					// 	t = tmp_clrs.size() - 1;
-					// } // cautious
-					tmp_node = tmp_clrs[tmp_min_idx].node;
-					begin_idx = tmp_clrs[tmp_min_idx].node.begin_idx;
-					end_idx = tmp_clrs[tmp_min_idx].end;
 
-					auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpkey, compareFirst_comp);
-					if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpkey || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
-					{
-						key_find kf{0, 0, 0};
-						// visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
-						gen_candidate(kf, candidate, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
+					tmpsub1 = sub[i] ^ bitstr;
 
-						// begin_ids = its->length;
-						// key_find tmpk{1, 1, 1};
-						// if (begin_ids & MASK_SIM)
-						// {
-						// 	tmp_info = visited_keys.back();
-						// 	visited_keys.pop_back();
-						// 	gen_candidate(tmpk, candidate, tmp_info, visited_keys, visited_keys, i, sub[i], dt, its->sub_key);
-						// 	dt += inc_max_dist[i] //+ 1;
-						// }
-					}
-				}
-			}
-		}
-		dt = 1; // sub[0] is finded
-		tmp_clrs.pop_back();
-		// get_times(0, 0);
-
-		uint32_t find_max_d = std::min(min_dist + sub_hammdist[client_id], (uint64_t)max_dist), tmp_dist = min_dist; // 这个find-max-d是不是太大了，应该写在mindist增加之前
-
-		for (auto val = tmp_clrs.begin(); val < tmp_clrs.end();)
-		{
-			tmp_node = val->node;
-			begin_idx = val->node.begin_idx;
-			end_idx = val->end;																				 // get_search_numbers(sub_keybit,sub_hammdist[i])
-			if ((val->dist + max_dist) <= sub_hammdist[client_id] || val->node.group_size < combine_clr_min) // end_idx - begin_idx < 500 (val->dist + max_dist - 1) <= sub_hammdist[i] || val->node.group_size < combine_clr_min
-			{
-				linear_scan(i, begin_idx, end_idx, sub[i], sub_hammdist[client_id], candidate, reached_subkey);
-
-				// if (!tmp_node.is_combined) //*2的位置错了？//有效，但是无法和combkey=50结合起来//这里的find时间不高&& (end_idx - begin_idx) < existed_subkeys.size() * 2
-				// {combine_clr_min
-				// 	sub_info_comp tmp;
-				// 	for (int k = begin_idx; k < end_idx; k++) // cautious error in it
-				// 	{
-				// 		tmp = sub_linear_comp[i][k];
-				// 		if (popcount(tmp.sub_key ^ sub[i]) <= sub_hammdist[i])
-				// 		{
-				// 			reached_subkey[tmp.sub_key] = 1;
-				// 			visited_keys.push_back({tmp.sub_key, tmp.skiplen, tmp.length});
-				// 		}
-				// 	}
-				val = tmp_clrs.erase(val);
-			}
-			else
-				val++;
-		}
-		// get_times(0, 3);
-
-		for (int t = dt; t <= sub_hammdist[client_id]; t++)
-		{
-			for (auto &its : C_0_TO_subhammdis[t])
-			{
-				tmpsub1 = sub[i] ^ its;
 				sub_key_I[0] = tmpsub1, sub_key_I[1] = i;
-
 				for (int j = 0; j < bloom_hash_times; j += 4)
 				{
 					tmp_hash[0] = tmpsub1;
 					tmp_hash[1] = i + j * sub_index_num * 2;
-					MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + j * INT_SIZE);
-					// memcpy(bloom_hash + j * INT_SIZE, tmp_hash_out, std::min(bloom_hash_times - j, INT_SIZE) * INT_SIZE);
+					MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + j * uint_size);
+					// memcpy(bloom_hash + j * uint_size, tmp_hash_out, std::min(bloom_hash_times - j, uint_size) * uint_size);
 				}
-				if (filters->contains(bloom_hash, bloom_hash_times * INT_SIZE)) // filters.contains(bloom_hash, bloom_hash_times * INT_SIZE)
+				if (filters.contains(bloom_hash, bloom_hash_times * uint_size)) // filters.contains(bloom_hash, bloom_hash_times * uint_size)
 				{
-					if (reached_subkey.find(tmpsub1) == reached_subkey.end())
+					existed_subkeys.push_back(key_find{tmpsub1, (uint16_t)t, (uint16_t)find_max_d});
+				}
+
+					while (++bit < s && power[bit] == power[bit + 1] - 1)
 					{
-						existed_subkeys.push_back(key_find{tmpsub1, (uint16_t)t, (uint16_t)find_max_d});
+						bitstr ^= (uint32_t)1 << (power[bit] - 1);
+						power[bit] = bit;
 					}
+					if (bit == s)
+						break;
 				}
 			}
+
+			// for (auto &its : C_0_TO_subhammdis[t])
+			// {
+			// 	tmpsub1 = sub[i] ^ its;
+			// 	sub_key_I[0] = tmpsub1, sub_key_I[1] = i;
+			// 	for (int j = 0; j < bloom_hash_times; j += 4)
+			// 	{
+			// 		tmp_hash[0] = tmpsub1;
+			// 		tmp_hash[1] = i + j * sub_index_num * 2;
+			// 		MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + j * uint_size);
+			// 		// memcpy(bloom_hash + j * uint_size, tmp_hash_out, std::min(bloom_hash_times - j, uint_size) * uint_size);
+			// 	}
+			// 	if (filters.contains(bloom_hash, bloom_hash_times * uint_size)) // filters.contains(bloom_hash, bloom_hash_times * uint_size)
+			// 	{
+			// 		existed_subkeys.push_back(key_find{tmpsub1, (uint16_t)t, (uint16_t)find_max_d});
+			// 	}
+			// }
 		}
-		// printf("linear size %d exist size %d clr_num%d \n", reached_subkey.size(), existed_subkeys.size(),tmp_clrs.size());
-		reached_subkey.clear();
-		// get_times(0, 1);
+		get_times(0, 1);
 
 		uint32_t min_dist0 = min_dist;
 		// uint32_t find_max_d = std::min(min_dist + sub_hammdist[i], (uint64_t)max_dist), tmp_dist = min_dist; // 这个find-max-d是不是太大了，应该写在mindist增加之前
-		min_dist += sub_hammdist[client_id] * 2; // cautious- 1
-		find_clrs_num += (tmp_clrs.size() ? tmp_clrs.size() : 1);
+		min_dist += sub_hammdist[i] * 2; // cautious- 1
+find_clrs_num+=(tmp_clrs.size()?tmp_clrs.size():1);
 
-		if (min_dist0 + sub_hammdist[client_id] > max_dist)
+		if (min_dist0 + sub_hammdist[i] > max_dist)
 		{
 			lookup_all_size + sub_linear_comp[i].size() - clr[i][clr[i].size() - 1].begin_idx;
 		}
-		if (1) // lookup_all_size >= (sub_linear_comp[i].size() >> 1) lookup_all_size >= ceil((double)sub_linear_comp[i].size() / 3)
+		if (1) // lookup_all_size >= (sub_linear_comp[i].size() >> 1)
 		{
 			// search only in nearest cluster
 			// for (auto val = tmp_clrs.begin(); val < tmp_clrs.end();)
 			// {
-			// 	tmp_node = val->node;
-			// 	begin_idx = val->node.begin_idx;
+			// 	tmp_node = *val;
+			// 	begin_idx = val->begin_idx;
 			// 	end_idx = val->end;
 
 			// 	if (!tmp_node.is_combined && (end_idx - begin_idx) < existed_subkeys.size() * 2) //*2的位置错了？//有效，但是无法和combkey=50结合起来//这里的find时间不高
@@ -781,7 +709,6 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 			// 			tmp = sub_linear_comp[i][k];
 			// 			if (popcount(tmp.sub_key ^ sub[i]) <= sub_hammdist[i])
 			// 			{
-			// 				reached_subkey[tmp.sub_key] = 1;
 			// 				visited_keys.push_back({tmp.sub_key, tmp.skiplen, tmp.length});
 			// 			}
 			// 		}
@@ -791,70 +718,22 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 			// 		val++;
 			// }
 
-			uint32_t max_node = 0;
-			// for (; max_node < tmp_clrs.size(); max_node++)
-			// {
-			// 	if (tmp_clrs[max_node].dist > max_dist)
-			// 		break;
-			// }
-			for (auto tmpc = tmp_clrs.begin(); tmpc != tmp_clrs.end() && tmpc->dist <= (lookup_radius >> 1); tmpc = tmp_clrs.erase(tmpc))
-			{
-				tmp_node = tmpc->node;
-				begin_idx = tmp_node.begin_idx;
-				end_idx = tmpc->end;
-				for (int j = 0; j < existed_subkeys.size(); j++)
-				{
-					auto &val = existed_subkeys[j];
-					if (val.max_dist == 0)
-						continue;
-
-					auto &tmpsub1 = val.subkey;
-					// if (val.dist < dt) // if 的次数太多，能否优化  || visited_subkeys.find(tmpsub1) != visited_subkeys.end()
-					// 	continue;
-					uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
-					if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
-						continue;
-					val.max_dist = tmp;
-
-					auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
-					if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
-					{
-						if (its->sub_key == tmpsub1)
-						{
-							val.max_dist = 0;
-							// val.dist = INT16_MAX;
-							val.clr_idx = INT16_MAX;
-						}
-						// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
-						gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
-					}
-				}
-
-				// get_times(0, 3);
-				// for (auto &tmpnode : visited_keys)
-				// {
-				// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
-				// }
-				// visited_keys.clear();
-				// get_times(0, 4);
-			}
-
-			if (tmp_clrs.size())
-				std::sort(tmp_clrs.begin(), tmp_clrs.end(), [](cluster_info &a, cluster_info &b)
-						  { return a.node.begin_idx < b.node.begin_idx; });
+			std::sort(tmp_clrs.begin(), tmp_clrs.end(), [](cluster_info &a, cluster_info &b)
+					  { return a.begin_idx < b.begin_idx; });
 			uint16_t tmp_min = 0, idx = 0, tmp_d;
 			uint32_t tmpkey_, max_find_dist;
+			
+			// printf("fff %d\n",sx);
+			tmp_clrs=clr[i];//cautious error
 			for (int x = 0; x < existed_subkeys.size(); x++)
 			{
-				// if (reached_subkey.find(existed_subkeys[x].subkey) != reached_subkey.end())
-				// {
-				// 	existed_subkeys[x].max_dist = 0;
-				// 	existed_subkeys[x].dist = INT16_MAX;
-				// 	continue;
-				// }
-
-				if (existed_subkeys[x].clr_idx == INT16_MAX)
-					continue;
+				uint32_t td= get_nearest_min_clr(i,existed_subkeys[x].subkey);
+				if(td==-1){
+					existed_subkeys[x].dist = tmp_clrs.size();
+				}else{
+					existed_subkeys[x].dist = td;
+				}
+				continue;
 
 				tmp_min = UINT8_MAX;
 				tmpkey_ = existed_subkeys[x].subkey;
@@ -863,7 +742,7 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 				{
 					if (tmp_clrs[t].dist > max_find_dist)
 						continue;
-					tmp_d = popcount(tmp_clrs[t].node.subkey ^ tmpkey_);
+					tmp_d = popcount(tmp_clrs[t].subkey ^ tmpkey_);
 					if (tmp_d < tmp_min)
 					{
 						tmp_min = tmp_d;
@@ -873,49 +752,40 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 
 				if (tmp_min <= max_dist)
 				{
-					existed_subkeys[x].max_dist = tmp_min;
-					// existed_subkeys[x].max_dist = 0;//cautious
+					existed_subkeys[x].max_dist=0;//cautious
+
 					// search in tmpclr[idx]
-					existed_subkeys[x].clr_idx = idx;
+					existed_subkeys[x].dist = idx;
 				}
 				else
 				{
 					// search in stash
-					existed_subkeys[x].clr_idx = tmp_clrs.size(); // too minor，不要随便乱改字段意义
+					existed_subkeys[x].dist = tmp_clrs.size();
 				}
 			}
-			c_info.node = clr[i][clr[i].size() - 1];
+			// printf("2d %d\n",sx);
+			c_info = clr[i][clr[i].size() - 1];
 			c_info.end = sub_linear_comp[i].size();
 			c_info.dist = popcount(sub[i] ^ clr[i][clr[i].size() - 1].subkey);
 			tmp_clrs.push_back(c_info);
 
 			std::sort(existed_subkeys.begin(), existed_subkeys.end(), [](key_find &a, key_find &b)
-					  { return a.clr_idx < b.clr_idx; }); // times too long cautious
+					  { return a.dist < b.dist; });
 
 			bool flag = true;
-			int val_idx = 0;
-			for (; val_idx < existed_subkeys.size(); val_idx++) // auto &val : existed_subkeys
+			for (auto& val : existed_subkeys)
 			{
-				auto &val = existed_subkeys[val_idx];
-				// if (reached_subkey.find(val.subkey) != reached_subkey.end())
-				// {
-				// 	val.max_dist = 0;
-				// 	continue;
-				// }
-				if (val.clr_idx == INT16_MAX)
-					continue;
-
-				if (val.clr_idx == tmp_clrs.size() - 1 && flag)
+				if (val.dist == tmp_clrs.size() - 1 && flag)
 				{
-					// get_times(0, 3);
+					get_times(0, 3);
 					flag = false;
-					break;
-					// continue;
+					break;//cautious for sort
 				}
-				int begin = tmp_clrs[val.clr_idx].node.begin_idx;
-				int end = tmp_clrs[val.clr_idx].end;
+				int begin = tmp_clrs[val.dist].begin_idx;
+				int end = tmp_clrs[val.dist].end;
 
 				auto tmpsub1 = val.subkey;
+				// printf("begin %d %d\n",begin,end);
 				auto its = std::lower_bound(sub_linear_comp[i].begin() + begin, sub_linear_comp[i].begin() + end, tmpsub1, compareFirst_comp);
 				if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
 				{
@@ -923,149 +793,16 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 						val.max_dist = 0;
 					// visited_subkeys.insert(its->sub_key); // why must ==? cautious
 					++hitliner;
-					// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
-
-					// visited_keys.push_back({tmpsub1, its->skiplen, its->length}); // cautious 9-17
-					gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
+					visited_keys.push_back({tmpsub1, its->skiplen, its->length}); // cautious 9-17
 				}
 			}
-			// get_times(0, 3);
-			// for (auto &tmpnode : visited_keys)
-			// {
-			// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
-			// }
-			// visited_keys.clear();
-			// get_times(0, 4);
+			if (flag)
+				get_times(0, 3);
 
-			uint32_t mid_idx, mid_dist;
-			for (auto &val : existed_subkeys)
-			{
-				mid_idx = -1;
-				mid_dist = -1;
-				tmpsub1 = val.subkey;
-
-				if (val.dist == sub_hammdist[client_id] - 1 && val.max_dist >= max_dist) //!=0
-				{
-					for (auto &val1 : mid_clrs)
-					{
-						tmp_node = val1.node;
-						begin_idx = tmp_node.begin_idx;
-						end_idx = val1.end;
-						uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
-						if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
-							continue;
-						val.max_dist = tmp;
-
-						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
-						if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
-						{
-							// if (its->sub_key == tmpsub1)
-							// {
-							// 	val.max_dist = 0;
-							// 	// val.dist = INT16_MAX;
-							// 	val.clr_idx = INT16_MAX;
-							// }
-
-							// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
-							gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
-						}
-						val.max_dist = 0; // cautious only stash later
-						break;
-					}
-				}
-				else if (val.dist == sub_hammdist[client_id] && val.max_dist >= (max_dist - 1)) //!=0
-				{
-					for (int t = 0; t < mid_clrs.size(); t++)
-					{
-						auto &val1 = mid_clrs[t];
-						tmp_node = val1.node;
-						uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
-						if (tmp < mid_dist)									// find max太大可省略，是不是小于呢？
-						{
-							mid_idx = t;
-							mid_dist = tmp;
-							if (tmp == max_dist - 1)
-								break;
-						}
-					}
-
-					if (mid_dist > max_dist)
-						continue;
-
-					tmp_node = mid_clrs[mid_idx].node;
-					begin_idx = tmp_node.begin_idx;
-					end_idx = mid_clrs[mid_idx].end;
-					auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
-					if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
-					{
-						// if (its->sub_key == tmpsub1)
-						// {
-						// 	val.max_dist = 0;
-						// 	// val.dist = INT16_MAX;
-						// 	val.clr_idx = INT16_MAX;
-						// }
-						// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
-
-						gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
-					}
-					val.max_dist = 0; // cautious only stash later
-				}
-			}
-			// get_times(0, 3);
-			// for (auto &tmpnode : visited_keys)
-			// {
-			// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
-			// }
-			// visited_keys.clear();
-			// get_times(0, 4);
-
-			uint32_t bigger_idx = 0;
-			for (auto &val : existed_subkeys)
-			{
-				if (val.dist == sub_hammdist[client_id] && val.max_dist >= max_dist) //!=0
-				{
-					for (auto &val1 : bigger_clrs)
-					{
-						auto tmpsub1 = val.subkey;
-						tmp_node = val1.node;
-						begin_idx = tmp_node.begin_idx;
-						end_idx = val1.end;
-						uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
-						if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
-							continue;
-						val.max_dist = tmp;
-
-						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
-						if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
-						{
-							// if (its->sub_key == tmpsub1)
-							// {
-							// 	val.max_dist = 0;
-							// 	// val.dist = INT16_MAX;
-							// 	val.clr_idx = INT16_MAX;
-							// }
-							// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
-
-							gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
-						}
-						val.max_dist = 0; // cautious only stash later
-						break;
-					}
-				}
-			}
-			// get_times(0, 3);
-			// for (auto &tmpnode : visited_keys)
-			// {
-			// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
-			// }
-			// visited_keys.clear();
-			// get_times(0, 4);
-
-			// if (flag)
-			// 	get_times(0, 3);
+				
 			// set before clusters
 			uint32_t dt1 = std::max(dt, (int)(max_dist - min_dist0)); // cautious
-			if (min_dist0 + sub_hammdist[client_id] > max_dist)
+			if (min_dist0 + sub_hammdist[i] > max_dist)
 			{
 				// min_dist = UINT16_MAX;
 				uint32_t idx1 = clr[i].size() - 1;
@@ -1073,14 +810,13 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 				end_idx = sub_linear_comp[i].size();
 				if (begin_idx < end_idx) // cautious for stash==0
 				{
-					for (; val_idx < existed_subkeys.size(); val_idx++) // auto &val : existed_subkeys
+					for (auto &val : existed_subkeys)
 					{
-						auto &val = existed_subkeys[val_idx];
-						auto &tmpsub1 = val.subkey;					   // why val.dist< is right not <
-						if (val.max_dist < max_dist || val.dist < dt1) //|| visited_subkeys.find(tmpsub1) != visited_subkeys.end() val.clr_idx != tmp_clrs.size() - 1 ||
-							continue;								   // stash只查max_dist没有减小的,==0表示已经查找到了？？cautious
-						// if (reached_subkey.find(tmpsub1) != reached_subkey.end())
-						// 	continue;
+						auto &tmpsub1 = val.subkey;
+						if (val.dist < dt1 || val.max_dist == 0) //|| visited_subkeys.find(tmpsub1) != visited_subkeys.end()
+							continue;
+						if (reached_subkey.find(tmpsub1) != reached_subkey.end())
+							continue;
 
 						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
 						if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
@@ -1089,16 +825,14 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 								val.max_dist = 0;
 							// visited_subkeys.insert(its->sub_key); // why must ==? cautious
 							++hitliner;
-							// visited_keys.push_back({tmpsub1, its->skiplen, its->length}); // cautious 9-17
+							visited_keys.push_back({tmpsub1, its->skiplen, its->length}); // cautious 9-17
 
-							// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
-
-							gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
 							// begin_ids = its->length;
 							// if (begin_ids & MASK_SIM)
 							// {
 							// 	tmp_info = visited_keys.back();
 							// 	visited_keys.pop_back();
+							// 	//cautious errro
 							// 	gen_candidate(candidate, tmp_info, visited_keys, tmp_visit, i, sub[i], val.dist);
 							// 	for (int t = 0; t < tmp_visit.size(); t++)
 							// 	{
@@ -1108,47 +842,184 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 							// }
 						}
 					}
-
-					// get_times(0, 3);
-					// for (auto &tmpnode : visited_keys)
-					// {
-					// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
-					// }
-					// visited_keys.clear();
-					// get_times(0, 4);
 				}
 			}
+			// printf("cc %d\n",sx);
 		}
+		else
+		{
+			// uint32_t max_node = 0;
+			// for (; max_node < tmp_clrs.size(); max_node++)
+			// {
+			// 	if (tmp_clrs[max_node].dist > min_dist) // 当min太大，可以省略这比较
+			// 		break;
+			// }
+			// tmp_dist = min_dist0;
+			// uint32_t begin_dist = 0;
+			// for (int t = 0; t < max_node; t++)
+			// {
+			// 	// if (tmp_clrs[t].dist != tmp_dist)
+			// 	// {
+			// 	// 	tmp_dist = tmp_clrs[t].dist;
+			// 	// 	find_max_d--;
+			// 	// }
 
+			// 	// if (tmp_clrs[t].dist > min_dist) // 当min太大，可以省略这比较
+			// 	// 	break;
+			// 	tmp_node = tmp_clrs[t].node;
+			// 	begin_idx = tmp_clrs[t].node.begin_idx;
+			// 	end_idx = tmp_clrs[t].end;
+
+			// 	if (!tmp_node.is_combined && (end_idx - begin_idx) < existed_subkeys.size() * 2) //*2的位置错了？//有效，但是无法和combkey=50结合起来//这里的find时间不高
+			// 	{
+			// 		// continue;
+			// 		sub_info_comp tmp;
+			// 		for (int k = begin_idx; k < end_idx; k++) // cautious error in it
+			// 		{
+			// 			// if (k >= sub_linear_comp[i].size())
+			// 			// {
+			// 			// 	printf("error %d %d %d %d %d\n", k, sub_linear_comp[i].size(), begin_idx, end_idx, tmp_clrs[t].dist);
+			// 			// 	break;
+			// 			// }
+			// 			tmp = sub_linear_comp[i][k];
+			// 			// if(tmp.begin<0){visited_keys.push_back({sub[i],tmp.begin});continue;}// errors
+			// 			if (popcount(tmp.sub_key ^ sub[i]) <= sub_hammdist[i])
+			// 			{
+			// 				reached_subkey[tmp.sub_key]=1;
+			// 				visited_keys.push_back({tmp.sub_key, tmp.skiplen, tmp.length});
+			// 			}
+			// 		}
+			// 	}
+			// 	else
+			// 	{
+			// 		// begin_dist = 0;
+			// 		// if (tmp_clrs[t].dist > (min_dist0 + 2))
+			// 		// {
+			// 		// 	begin_dist = ((tmp_clrs[t].dist - 1 - min_dist0) >> 1);
+			// 		// }
+			// 		for (int j = 0; j < existed_subkeys.size(); j++) // exist-keys 有很多，但是实际上只需要在与它最近的cluster中find
+			// 		{
+
+			// 			auto &val = existed_subkeys[j];
+
+			// 			if (val.max_dist == 0)
+			// 				continue;
+			// 			auto &tmpsub1 = val.subkey;
+			// 			if (reached_subkey.find(tmpsub1) != reached_subkey.end()) // val.dist <= begin_dist || error
+			// 				continue;
+			// 			// if (val.dist < dt) // if 的次数太多，能否优化  || visited_subkeys.find(tmpsub1) != visited_subkeys.end()
+			// 			// 	continue;
+			// 			uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
+			// 			if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
+			// 				continue;
+			// 			// add_sum++;
+			// 			val.max_dist = tmp;
+
+			// 			auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+			// 			if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+			// 			{
+			// 				if (its->sub_key == tmpsub1)
+			// 					val.max_dist = 0;
+			// 				// 	visited_subkeys.insert(its->sub_key);
+
+			// 				gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, visited_keys, tmp_visit, i, sub[i], dt + 1);
+			// 				// // ++hitliner;
+			// 				// visited_keys.push_back({tmpsub1, its->skiplen, its->length}); // cautious 9-17
+
+			// 				// begin_ids = its->length;
+			// 				// if (begin_ids & MASK_SIM)
+			// 				// {
+			// 				// 	tmp_info = visited_keys.back();
+			// 				// 	visited_keys.pop_back();
+			// 				// 	gen_candidate(candidate, tmp_info, visited_keys, tmp_visit, i, sub[i], dt);
+			// 				// 	for (int t = 0; t < tmp_visit.size(); t++)
+			// 				// 	{
+			// 				// 		gen_candidate(candidate, tmp_visit[t], visited_keys, tmp_visit, i, sub[i], dt + 1);
+			// 				// 	}
+			// 				// 	tmp_visit.clear();
+			// 				// }
+			// 			}
+			// 		}
+			// 	}
+			// }
+
+			// get_times(0, 3);
+
+			// // set before clusters
+			// uint32_t dt1 = std::max(dt, (int)(max_dist - min_dist0)); // cautious
+			// if (min_dist0 + sub_hammdist[i] > max_dist)
+			// {
+			// 	// min_dist = UINT16_MAX;
+			// 	uint32_t idx1 = clr[i].size() - 1;
+			// 	begin_idx = clr[i][idx1].begin_idx;
+			// 	end_idx = sub_linear_comp[i].size();
+			// 	if (begin_idx < end_idx) // cautious for stash==0
+			// 	{
+			// 		for (auto &val : existed_subkeys)
+			// 		{
+			// 			if (val.max_dist == 0)
+			// 				continue;
+			// 			auto &tmpsub1 = val.subkey;
+			// 			if (val.dist < dt1 || val.max_dist == 0) //|| visited_subkeys.find(tmpsub1) != visited_subkeys.end()
+			// 				continue;
+			// 			if (reached_subkey.find(tmpsub1) != reached_subkey.end())
+			// 				continue;
+
+			// 			auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+			// 			if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+			// 			{
+			// 				if (its->sub_key == tmpsub1)
+			// 					val.max_dist = 0;
+			// 				// visited_subkeys.insert(its->sub_key); // why must ==? cautious
+			// 				++hitliner;
+			// 				gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, visited_keys, tmp_visit, i, sub[i], dt + 1);
+			// 				// visited_keys.push_back({tmpsub1, its->skiplen, its->length}); // cautious 9-17
+
+			// 				// begin_ids = its->length;
+			// 				// if (begin_ids & MASK_SIM)
+			// 				// {
+			// 				// 	tmp_info = visited_keys.back();
+			// 				// 	visited_keys.pop_back();
+			// 				// 	gen_candidate(candidate, tmp_info, visited_keys, tmp_visit, i, sub[i], dt);
+			// 				// 	for (int t = 0; t < tmp_visit.size(); t++)
+			// 				// 	{
+			// 				// 		gen_candidate(candidate, tmp_visit[t], visited_keys, tmp_visit, i, sub[i], dt + 1);
+			// 				// 	}
+			// 				// 	tmp_visit.clear();
+			// 				// }
+			// 			}
+			// 		}
+			// 	}
+			// }
+		}
 	search_end:
-		// get_times(0, 2);
-		// ocall_get_timeNow(time);
+			// printf("ddd %d\n",sx);
+		get_times(0, 2);
+		ocall_get_timeNow(time);
 		end_time = *time;
 		find_time += end_time - begin_time;
-		// ocall_get_timeNow(time);
+		ocall_get_timeNow(time);
 		begin_time = *time;
 
 		vector<sub_info_comp> tmpv;
 		std::map<uint32_t, int> tmpm;
 		// the node finded by linear list or hashmap, to get candidate's id
 
-		// candi_num += visited_keys.size();
-		// std::sort(visited_keys.begin(), visited_keys.end(), [](sub_info_comp &a, sub_info_comp &b)
-		// 		  { return a.length > b.length; });
-		reached_subkey.clear();
+		reached_subkey.clear(); // 复用reached_keys（先clear），如果已经查找到了key对应的ids，则不需要再次gen_cand()
 		key_find tmpk{0, 0, 0};
-		// for (int y = 0; y < visited_keys.size(); y += 1)
-		// {
-		// 	auto val = reached_subkey.find(visited_keys[y].sub_key);
-		// 	if (val != reached_subkey.end() && val->second == -1)
-		// 		continue;
-		// 	gen_candidate(tmpk, candidate, visited_keys[y], tmp_visit, tmpv, i, sub[i], 100);
-		// }
+		for (int y = 0; y < visited_keys.size(); y += 1)
+		{
+			auto val = reached_subkey.find(visited_keys[y].sub_key);
+			if (val != reached_subkey.end() && val->second == -1)
+				continue;
+			gen_candidate(tmpk, candidate, visited_keys[y], tmp_visit, tmpv, i, sub[i], dt);
+		}
 		visited_keys.clear();
-		// ocall_get_timeNow(time);
+		ocall_get_timeNow(time);
 		end_time = *time;
 		insert_time += end_time - begin_time;
 	}
+			// printf("zzz %d\n",sx);
 	// printf("%d hitt %d misss\n", hittt, misss);
 	// printf("bloomHit:%lu bloomMiss:%lu sum%d\n", hitliner+hitmap, bloomMiss, hitliner+hitmap+bloomMiss);
 	// printf("hitmap %d hitliner %d \n", hitmap, hitliner);
@@ -1166,7 +1037,7 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 	static uint32_t unequal = 0;
 	static uint32_t unequal_n = 0;
 
-	// ocall_get_timeNow(time);
+	ocall_get_timeNow(time);
 	begin_time = *time;
 	uint64_t cmp_hamm[2] = {0};
 	uint64_t count = 0;
@@ -1184,11 +1055,11 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 			get_full_fingerprint32(tmp_fullkey, (uint32_t *)&full_index[*it]);
 			cmp_hamm[0] = query[0] ^ (tmp_fullkey[0]);
 			cmp_hamm[1] = query[1] ^ (tmp_fullkey[1]);
-			count = popcount(cmp_hamm[0]) + popcount(cmp_hamm[1]);
-			// count = bitset<64>(cmp_hamm[0]).count() + bitset<64>(cmp_hamm[1]).count();
+			// count =__builtin_popcountl(cmp_hamm[0]) + __builtin_popcountl(cmp_hamm[1]);
+			count = bitset<64>(cmp_hamm[0]).count() + bitset<64>(cmp_hamm[1]).count();
 
 			candi_num += full_index[*it + fullkey_len].len; // cautious caluate for candidate images
-			if (count <= hammdist[client_id])
+			if (count <= hammdist)
 			{
 				successful_num += full_index[*it + fullkey_len].len;
 
@@ -1196,25 +1067,21 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 				uint8_t *comp_data = (uint8_t *)&full_index[*it + fullkey_len + 1];
 				if (full_index[*it + fullkey_len].len <= COMPRESS_MIN_UNSORT)
 				{
-					// uint32_t test_target = 0;
+					uint32_t test_target = 0;
 					out_tmp = (uint32_t *)&full_index[*it + fullkey_len + 1];
 					// 测试获取的图片对应的id
 					for (int j = 0; j < full_index[*it + fullkey_len].len; j++)
-					{
 						res_id.push_back(out_tmp[j]);
-						test_target += out_tmp[j];
-					}
+					// test_target += out_tmp[j];
 				}
 				else
 				{
-					// uint32_t test_target = 0;
+					uint32_t test_target = 0;
 					for_uncompress(comp_data, out_tmp, full_index[*it + fullkey_len].len);
 					// 测试获取的图片对应的id
 					for (int j = 0; j < full_index[*it + fullkey_len].len; j++)
-					{
 						res_id.push_back(out_tmp[j]);
-						test_target += out_tmp[j];
-					}
+					// test_target += out_tmp[j];
 				}
 
 				it++;
@@ -1244,36 +1111,20 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 	// 	printf("min_num[2]:%llu %llu\n", query[0], query[1]);
 	// }
 	// printf("min_num[0]:%u min_num[1]:%u min_num[2]:%u\n", min_num[0], min_num[1], min_num[2]);
-	// ocall_get_timeNow(time);
+	ocall_get_timeNow(time);
 	end_time = *time;
 	verify_time += end_time - begin_time;
-	// ocall_get_timeNow(total_time_now);
+	ocall_get_timeNow(total_time_now);
 	total_end_time = *total_time_now;
 	total_time += total_end_time - total_begin_time;
 	return std::move(res_id);
 }
-void containers::gen_candidate(key_find &find_key, std::unordered_set<uint32_t> &cand, sub_info_comp comp, vector<sub_info_comp> &tmp_keys,
-							   uint32_t i, uint32_t subkey, uint32_t dt, uint32_t cache_key)
+void containers::gen_candidate(key_find &find_key, std::unordered_set<uint32_t> &cand, sub_info_comp comp, vector<sub_info_comp> &visited_keys, vector<sub_info_comp> &tmp_keys,
+							   uint32_t i, uint32_t subkey, uint32_t dt)
 {
-	times_gen++;
-	uint8_t *tmp_ids_block;
-	uint64_t key = ((uint64_t)i << 32) | cache_key;
+	fetch_nums++;
+	uint64_t key = ((uint64_t)i << 32) | comp.skiplen;
 
-// if (val != data_cache.end())combs_hit += val->second->key;
-#if CACHE_SIZE >= 500000
-	auto val = data_cache.find(key);
-	if (val != data_cache.end())
-	{
-		tmp_ids_block = val->second->ids.data();
-		// lru_ids_visit(key, val->second);
-	}
-	else
-	{
-		// tmp_ids_block = lru_ids_add(key, i, comp);
-	}
-
-#else
-	lru_mtx.lock();
 	auto val = data_cache.find(key);
 	if (val != data_cache.end())
 	{
@@ -1284,8 +1135,6 @@ void containers::gen_candidate(key_find &find_key, std::unordered_set<uint32_t> 
 	{
 		tmp_ids_block = lru_ids_add(key, i, comp);
 	}
-	lru_mtx.unlock();
-#endif
 	// auto val = data_cache[i].find(comp.skiplen);
 	// if (val != data_cache[i].end())
 	// {
@@ -1314,39 +1163,38 @@ void containers::gen_candidate(key_find &find_key, std::unordered_set<uint32_t> 
 	{
 		is_combined_keys = true;
 	}
-	out_tmp = (uint32_t *)tmp_ids_block;
-	tmp_size = comp.length; //*((uint32_t *)&tmp_ids_block[tmp_begin]);
-							/*	if ((int)tmp_size < 0)
-								{
-									tmp_begin += sizeof(uint32_t);
-									tmp_size = *((uint32_t *)&tmp_ids_block[tmp_begin]);
-								}
-						
-								// 解压，如果多个subkey是被合并后的，is-combine=true；解压的是unsort数组；否则解压产生sorted数组
-								if (!is_combined_keys)
-								{
-									if (tmp_size <= COMPRESS_MIN)
-									{
-										out_tmp = (uint32_t *)(tmp_ids_block + tmp_begin + 4);
-									}
-									else
-									{
-										for_uncompress(tmp_ids_block + tmp_begin + 4, out_tmp, tmp_size); // decompress
-																										  //   printf("tmp_size: %u\n", tmp_size);
-									}
-								}
-								else
-								{
-									if (tmp_size <= COMPRESS_MIN_UNSORT)
-										out_tmp = (uint32_t *)(tmp_ids_block + tmp_begin + 4);
-									else
-										for_uncompress(tmp_ids_block + tmp_begin + 4, out_tmp, tmp_size); // decompress
-								}
-							*/
+
+	tmp_size = *((uint32_t *)&tmp_ids_block[tmp_begin]);
+	if ((int)tmp_size < 0)
+	{
+		tmp_begin += sizeof(uint32_t);
+		tmp_size = *((uint32_t *)&tmp_ids_block[tmp_begin]);
+	}
+
+	// 解压，如果多个subkey是被合并后的，is-combine=true；解压的是unsort数组；否则解压产生sorted数组
+	if (!is_combined_keys)
+	{
+		if (tmp_size <= COMPRESS_MIN)
+		{
+			out_tmp = (uint32_t *)(tmp_ids_block + tmp_begin + 4);
+		}
+		else
+		{
+			for_uncompress(tmp_ids_block + tmp_begin + 4, out_tmp, tmp_size); // decompress
+																			  //   printf("tmp_size: %u\n", tmp_size);
+		}
+	}
+	else
+	{
+		if (tmp_size <= COMPRESS_MIN_UNSORT)
+			out_tmp = (uint32_t *)(tmp_ids_block + tmp_begin + 4);
+		else
+			for_uncompress(tmp_ids_block + tmp_begin + 4, out_tmp, tmp_size); // decompress
+	}
+
 	// get the true identifiers of the subkey
 	if (is_combined_keys)
 	{
-		combs++;
 		uint32_t lens = 0;
 
 		// out_tmp结构:[keys_len, subkey0,...,subkeyN,-id0,id1,-id4,id8,...,idm]
@@ -1355,58 +1203,32 @@ void containers::gen_candidate(key_find &find_key, std::unordered_set<uint32_t> 
 		uint32_t keys_len = out_tmp[0];
 		// printf("keys_len %d\n", keys_len);
 
-		// auto x = std::lower_bound(out_tmp + 1, out_tmp + 1 + keys_len, tempKey);
-		// if (x != out_tmp + 1 + keys_len && *x == tempKey)
-		// {
-		// 	uint32_t times = (x - out_tmp);
-		// 	for (int t = 1 + keys_len; t < tmp_size; t++)
-		// 	{
-		// 		if ((int)out_tmp[t] < 0)
-		// 		{
-		// 			times--;
-		// 			if (times == 0)
-		// 			{
-		// 				find_key.max_dist = 0;
-		// 				reached_subkey[comp.sub_key] = -1;
-		// 				combs_hit++;
-		// 				cand.emplace_hint(cand.begin(), -out_tmp[t] - 1);
-		// 				for (int l = t + 1; l < tmp_size; l++)
-		// 				{
-		// 					if ((int)out_tmp[l] < 0)
-		// 						break;
-		// 					cand.emplace_hint(cand.begin(), out_tmp[l]);
-		// 				}
-		// 				break;
-		// 			}
-		// 		}
-		// 	}
-		// }
-
-		// out_tmp结构:[subkey0,len0,id0,id1,...,subkey1,len1,id0,id1,...]
-		tmp_size = *((uint32_t *)&tmp_ids_block[0]);
-		for (int j = 1; j < tmp_size;)
+		auto x = std::lower_bound(out_tmp + 1, out_tmp + 1 + keys_len, tempKey);
+		if (x != out_tmp + 1 + keys_len && *x == tempKey)
 		{
-			if (out_tmp[j] == tempKey)
+			uint32_t times = (x - out_tmp);
+			for (int t = 1 + keys_len; t < tmp_size; t++)
 			{
-				find_key.clr_idx = INT16_MAX;
-				// reached_subkey[comp.sub_key] = -1;
-				find_key.max_dist = 0;
-				j++;
-				uint32_t len = out_tmp[j];
-				for (int l = j + 1; l <= j + len; l++)
+				if ((int)out_tmp[t] < 0)
 				{
-					cand.emplace_hint(cand.begin(), out_tmp[l]);
-					lens++;
+					times--;
+					if (times == 0)
+					{
+						hit_nums++;
+						find_key.max_dist = 0;
+						reached_subkey[comp.sub_key] = -1;
+						cand.emplace_hint(cand.begin(), -out_tmp[t]);
+						for (int l = t + 1; l < tmp_size; l++)
+						{
+							if ((int)out_tmp[l] < 0)
+								break;
+							cand.emplace_hint(cand.begin(), out_tmp[l]);
+						}
+						break;
+					}
 				}
-				j += out_tmp[j] + 1;
-				break;
-			}
-			else
-			{
-				j += out_tmp[j + 1] + 2;
 			}
 		}
-
 		// for (int j = 1; j <= keys_len; j++)
 		// {
 		// 	if (out_tmp[j] > tempKey)
@@ -1438,189 +1260,52 @@ void containers::gen_candidate(key_find &find_key, std::unordered_set<uint32_t> 
 	}
 	else
 	{
-		// reached_subkey[comp.sub_key] = -1;
+		hit_nums++;
 		find_key.max_dist = 0;
-		find_key.clr_idx = INT16_MAX;
+		reached_subkey[comp.sub_key] = -1;
 		for (int j = 0; j < tmp_size; j++)
 		{
 			cand.emplace_hint(cand.begin(), out_tmp[j]);
 		}
 	}
-}
-void containers::linear_scan(uint32_t i, uint32_t begin, uint32_t end, uint32_t subkey, uint32_t hammdist,
-							 unordered_set<uint32_t> &candidate, std::unordered_map<uint32_t, int> &reached_subkey)
-{
-	sub_info_comp tmp_info;
-	uint8_t *tmp_ids_block;
-	for (uint32_t c = begin; c < end; c++)
+	if (dt >= sub_hammdist[i])
+		return;
+	if (comp.length & MASK_SIM)
 	{
-		tmp_info = sub_linear_comp[i][c];
-		if (tmp_info.length & MASK_INF)
+		uint32_t skip_size = *((uint32_t *)&tmp_ids_block[0]), tmp_subkey, tmp_index, tmp_len;
+		skip_size = -skip_size;
+		uint32_t near_keys_num = *((uint32_t *)&tmp_ids_block[skip_size]);
+		for (int k = 0, near_keys_index = skip_size + sizeof(uint32_t); k < near_keys_num; k++)
 		{
-			// tmp_info.sub_key = subkey;
-			// key_find kf{sub_linear_comp[i][c].sub_key,10,10};
-			// gen_candidate(kf,candidate,tmp_info,visited_keys,visited_keys,i,subkey,0);
-			times_gen++;
+			tmp_subkey = *((uint32_t *)&tmp_ids_block[near_keys_index]);
+			near_keys_index += sizeof(uint32_t);
 
-			uint64_t key = ((uint64_t)i << 32) | tmp_info.sub_key;
-			// if (val != data_cache.end())combs_hit += val->second->key;
-#if CACHE_SIZE >= 500000
-			auto val = data_cache.find(key);
-			if (val != data_cache.end())
+			tmp_index = *((uint32_t *)&tmp_ids_block[near_keys_index]);
+			near_keys_index += sizeof(uint32_t);
+
+			// tmp_len = *((uint32_t *)&tmp_ids_block[near_keys_index]);
+			// near_keys_index += sizeof(uint32_t);
+			auto tmp_count = bitset<32>(tmp_subkey ^ subkey).count();
+			if (tmp_count > sub_hammdist[i])
+				break;
+			if (tmp_count >= dt && reached_subkey.find(tmp_subkey) == reached_subkey.end())
 			{
-				tmp_ids_block = val->second->ids.data();
-				// lru_ids_visit(key, val->second);
-			}
-			else
-			{
-				// tmp_ids_block = lru_ids_add(key, i, tmp_info);
-			}
-#else
-			lru_mtx.lock();
-			auto val = data_cache.find(key);
-			if (val != data_cache.end())
-			{
-				tmp_ids_block = val->second->ids.data();
-				lru_ids_visit(key, val->second);
-			}
-			else
-			{
-				tmp_ids_block = lru_ids_add(key, i, tmp_info);
-			}
-			lru_mtx.unlock();
-#endif
-
-			uint32_t tempKey = subkey;
-			uint32_t tmp_size = 0;
-			int tmp_begin = 0;
-			bool is_combined_keys = false;
-
-			auto out_tmp = out;
-			out_tmp = (uint32_t *)tmp_ids_block;
-			// (tmp_begin < 0) ,some continuous  subkeys are Combined to one biggest subkey in there
-			// if (tmp_info.length & MASK_INF)
-			{
-				is_combined_keys = true;
-			}
-
-			// tmp_size = *((uint32_t *)&tmp_ids_block[tmp_begin]);
-			// if ((int)tmp_size < 0)
-			// {
-			// 	tmp_begin += sizeof(uint32_t);
-			// 	tmp_size = *((uint32_t *)&tmp_ids_block[tmp_begin]);
-			// }
-
-			// // 解压，如果多个subkey是被合并后的，is-combine=true；解压的是unsort数组；否则解压产生sorted数组
-			// if (!is_combined_keys)
-			// {
-			// 	if (tmp_size <= COMPRESS_MIN)
-			// 	{
-			// 		out_tmp = (uint32_t *)(tmp_ids_block + tmp_begin + 4);
-			// 	}
-			// 	else
-			// 	{
-			// 		for_uncompress(tmp_ids_block + tmp_begin + 4, out_tmp, tmp_size); // decompress
-			// 																		  //   printf("tmp_size: %u\n", tmp_size);
-			// 	}
-			// }
-			// else
-			// {
-			// 	if (tmp_size <= COMPRESS_MIN_UNSORT)
-			// 		out_tmp = (uint32_t *)(tmp_ids_block + tmp_begin + 4);
-			// 	else
-			// 		for_uncompress(tmp_ids_block + tmp_begin + 4, out_tmp, tmp_size); // decompress
-			// }
-
-			// get the true identifiers of the subkey
-			if (is_combined_keys)
-			{
-				combs++;
-				uint32_t lens = 0;
-
-				// // out_tmp结构:[keys_len, subkey0,...,subkeyN,-id0,id1,-id4,id8,...,idm]
-				// // keys_len: 这个block里面subkey的数量，subkey：这个block里面包含的subkey，所有subkey在排列在一起
-				// // id：前面subkey对应的图片id集合，按照subkey的先后顺序，每个subkey对应一个id序列，这个id序列开头为-id，以表示开始一个新的序列
-				// uint32_t keys_len = out_tmp[0];
-				// // printf("keys_len %d\n", keys_len);
-
-				// int ids_begin = 1 + keys_len;
-
-				// for (int j = 1; j <= keys_len; j++)
-				// {
-				// 	// if ((int)out_tmp[ids_begin] >= 0)
-				// 	// 	printf("id %d %d %d size%d\n", out_tmp[ids_begin], ids_begin, 1 + keys_len, tmp_size);
-				// 	if (popcount(out_tmp[j] ^ subkey) <= hammdist)
-				// 	{
-				// 		reached_subkey[out_tmp[j]] = -1;
-				// 		uint32_t times = j;
-				// 		// if ((int)out_tmp[ids_begin] >= 0)
-				// 		// 	printf("id %d %d %d\n", out_tmp[ids_begin], ids_begin, 1 + keys_len);
-				// 		candidate.emplace_hint(candidate.begin(), -out_tmp[ids_begin] - 1);
-				// 		ids_begin++;
-				// 		for (; ids_begin < tmp_size && ((int)out_tmp[ids_begin]) >= 0; ids_begin++)
-				// 		{
-				// 			candidate.emplace_hint(candidate.begin(), out_tmp[ids_begin]);
-				// 		}
-				// 		// break;
-				// 	}
-				// 	else
-				// 	{
-				// 		// candidate.emplace_hint(candidate.begin(), -out_tmp[ids_begin] - 1);
-				// 		for (ids_begin++; ids_begin < tmp_size && ((int)out_tmp[ids_begin]) >= 0; ids_begin++)
-				// 			; // 	{
-				// 			  // 	candidate.emplace_hint(candidate.begin(), out_tmp[ids_begin]);
-				// 			  // };
-				// 	}
-				// }
-
-				tmp_size = *((uint32_t *)&tmp_ids_block[0]);
-				;
-				for (int j = 1; j < tmp_size;)
+				reached_subkey[tmp_subkey] = (tmp_index);
+				if (tmp_len & MASK_SIM)
 				{
-					if (popcount(out_tmp[j] ^ subkey) <= hammdist)
-					{
-						j++;
-						uint32_t len = out_tmp[j];
-						reached_subkey[out_tmp[j - 1]] = -1;
-						for (int l = j + 1; l <= j + len; l++)
-						{
-							candidate.emplace_hint(candidate.begin(), out_tmp[l]);
-							lens++;
-						}
-						j += out_tmp[j] + 1;
-						// break;
-					}
-					else
-					{
-						j += out_tmp[j + 1] + 2;
-					}
+					tmp_keys.push_back(sub_info_comp{tmp_subkey, sub_linear_comp[i][tmp_index].skiplen, sub_linear_comp[i][tmp_index].length});
+					// gen_candidate(cand, sub_info_comp{tmp_subkey, tmp_index, tmp_len}, visited_keys, i, subkey, dt);
+					// return;
 				}
-
-				// if(ids_begin!=tmp_size)printf("error ids_begin %d tmp_size %d\n",ids_begin,tmp_size);
-			}
-			// else
-			// {
-			// 	reached_subkey[comp.sub_key] = -1;
-			// 	find_key.max_dist = 0;
-			// 	for (int j = 0; j < tmp_size; j++)
-			// 	{
-			// 		cand.emplace_hint(cand.begin(), out_tmp[j]);
-			// 	}
-			// }
-		}
-		else
-		{
-			if (popcount(tmp_info.sub_key ^ subkey) <= hammdist)
-			{
-				key_find kf{0, 0, 0};
-				reached_subkey[tmp_info.sub_key] = -1;
-				// if(reached_subkey.find(tmp_info.sub_key)!=reached_subkey.end())printf("error\n");
-				gen_candidate(kf, candidate, {tmp_info.sub_key, tmp_info.skiplen, tmp_info.length}, tmp_visit, i, subkey, 0, tmp_info.sub_key);
-
-				// visited_keys.push_back(tmp_info);
+				else
+				{
+					visited_keys.push_back(sub_info_comp{tmp_subkey, sub_linear_comp[i][tmp_index].skiplen, sub_linear_comp[i][tmp_index].length}); // cautious
+																																					// tmp_visit.push_back(tmp_index);
+				}
 			}
 		}
 	}
+	// reached_subkey[comp.sub_key] = comp.skiplen;//cautious for 11-9
 }
 void containers::test()
 {
@@ -1645,9 +1330,9 @@ void containers::test()
 	{
 		temp_key[0] = itx.first;
 		temp_key[1] = itx.second;
-		find_sim(temp_key, 0, 0); // test_targets[i]
+		find_sim(temp_key, 0); // test_targets[i]
 		// 					   // i++;
-		int k = 1000;
+		int k = 100;
 		// auto res = find_knn(temp_key, k);
 		// uint64_t cmp_hamm[2], tmp_fullkey[2];
 		// for (int i = 0; i < res.size(); i++)
@@ -1678,24 +1363,21 @@ void containers::test()
 	find_time /= 1e6;
 	insert_time /= 1e6;
 	verify_time /= 1e6;
-	printf("resize times %d size %lld finded clrs times %d\n", resize_times, resize_size, find_clrs_num);
+	printf("resize times %d size %lld finded clrs times %d\n", resize_times, resize_size,find_clrs_num);
+	printf("find times %d, hit times %d\n", fetch_nums, hit_nums);
 
-	printf("fetch candidate time %d candi_num %d combs %d combs_hit %d bigun%d\n", times_gen, candi_num, combs, combs_hit, big_uneq);
 	// total时间（ms）， find：查询map和linear的时间，insert：插入到set<candidate>的时间，verify：验证candidate的时间
 	printf("total=time:%d,sum:%d, find-time:%d, insert-time:%d, verify-time:%d\n", total_time, find_time + insert_time + verify_time, find_time, insert_time, verify_time);
 	for (int t = 0; t < 6; t++)
 		bd_time[t] /= 1e6;
-	printf("cal-cer one %d, bitmask %d, stash %d, cluster %d id_loading %d \n", bd_time[0], bd_time[1], bd_time[2], bd_time[3], bd_time[4]);
-	printf("zero_num=%d  combine_clr_min=%d test target %d\n", zero_num, combine_clr_min, test_target);
-
-	printf("max_cache value%d\n", max_val);
+	printf("cal-cer one %d, bitmask %d, stash %d, cluster %d\n", bd_time[0], bd_time[1], bd_time[2], bd_time[3]);
 }
-void containers::changeHammingDist(uint64_t hammdist, int client_id)
+void containers::changeHammingDist(uint64_t hammdist)
 {
-	this->hammdist[client_id] = hammdist;
-	// for (int i = 0; i < SUBINDEX_NUM; i++)
+	this->hammdist = hammdist;
+	for (int i = 0; i < SUBINDEX_NUM; i++)
 	{
-		this->sub_hammdist[client_id] = floor((double)hammdist / SUBINDEX_NUM);
+		this->sub_hammdist[i] = floor((double)hammdist / SUBINDEX_NUM);
 	}
 	// if (hammdist == this->hammdist)
 	// 	return;
@@ -1804,32 +1486,25 @@ void test_run()
 }
 void init_after_send()
 {
+	// test-cp();
 	cont.get_test_pool(); // get test pool before sort the linearlist
-	cont.full_key_sorted.shrink_to_fit();
 
-	cont.init_filters(0);
 	cont.opt_full_index();
-	// // cont.opt_sub_index();
+	// cont.opt_sub_index();
 	// printf("lll %d %f\n", (uint32_t)(1.0 * cont.sub_index_liner[0].size() / 2000), (1.0 * cont.sub_index_liner[0].size() / 1.0 * 1000));
 
 	cont.make_clusters();
-
 	cont.init_sub_maps();
 
 	uint32_t nums = 0;
 	for (int i = 0; i < SUBINDEX_NUM; i++)
 		nums += cont.sub_linear_comp[i].size();
-	cont.lru_cache.capacity = CACHE_SIZE; // 5000 ((uint32_t)floor((double)nums / 100) < 20000 ? 20000 : (uint32_t)floor((double)nums / 100)); //	nums + 100000; //
+	cont.lru_cache.capacity = 5000; // ((uint32_t)floor((double)nums / 100) < 20000 ? 20000 : (uint32_t)floor((double)nums / 100)); //	nums + 100000; //
 	cont.lru_cache.len = 0;
-	cont.lru_cache.remain_size = cont.lru_cache.capacity * 3000;
 	cont.init_ids_cache();
-
+	cont.init_sub_clrs();
 	printf("The full index entry is: %d \n", cont.full_index.size());
 	printf("The number of queries is: %d \n", cont.test_pool.size());
-
-	printf("The full sort entry is: %d \n", cont.full_key_sorted[0].target);
-	printf("comp_subkey %d\n", cont.sub_linear_comp->size());
-	printf("cache size %d\n", cont.data_cache.size());
 }
 
 void ecall_send_data(void *dataptr, size_t len)
@@ -1932,19 +1607,9 @@ void ecall_send_data_enc(void *dataptr, size_t batch_size, int is_img_dataset)
 
 		out_id = cont.random_uuid() - 1;
 		info.identify = out_id;
-		if (is_img_dataset || cont.full_key_sorted.size() < SIFT_LEN) /// SIFT_LEN
+		if (is_img_dataset || cont.full_key_sorted.size() < SIFT_LEN)
 		{
 			cont.full_key_sorted.push_back(info);
-
-			// info.fullkey[0]++;
-			// info.fullkey[1]++;
-			// cont.full_key_sorted.push_back(info);
-			// info.fullkey[0]+=10;
-			// info.fullkey[1]+=10;
-			// cont.full_key_sorted.push_back(info);
-			// info.fullkey[0]+=100;
-			// info.fullkey[1]+=100;
-			// cont.full_key_sorted.push_back(info);
 			// printf("id%d\n", out_id);
 		}
 		if (is_img_dataset)
@@ -2001,9 +1666,6 @@ void ecall_enc_dataset(void *dataptr, size_t len)
 }
 void containers::opt_full_index()
 {
-	uint32_t tmp_hash[2], hash_size = ((bloom_hash_times >> 2) + (bloom_hash_times & 0x3 != 0) * 4) * INT_SIZE; // ceil(times/4)*4
-	uint8_t tmp_hash_out[32], bloom_hash[hash_size];
-
 	information temp_information;
 	information idy_info;
 	information len_info;
@@ -2018,6 +1680,8 @@ void containers::opt_full_index()
 	uint8_t *tmp_compress_data = new uint8_t[80000]; // 临时空间用于进行压缩，数据量大时可能需要增大
 	uint32_t complen = 0;
 
+	uint32_t tmp_hash[2], hash_size = ((bloom_hash_times >> 2) + (bloom_hash_times & 0x3 != 0) * 4) * uint_size; // ceil(times/4)*4
+	uint8_t tmp_hash_out[32], bloom_hash[hash_size];
 	for (int i = 0; i < full_key_sorted.size();)
 	{
 		fullkey_len++;
@@ -2041,32 +1705,24 @@ void containers::opt_full_index()
 			// {
 			// 	tmp_hash[0] = sub[j];
 			// 	tmp_hash[1] = j + t * sub_index_num * 2;
-			// 	MurmurHash3_x86_128(tmp_hash, 8, hash_seed[j], bloom_hash + t * INT_SIZE);
+			// 	MurmurHash3_x86_128(tmp_hash, 8, hash_seed[j], bloom_hash + t * uint_size);
 			// 	// sha256_digest(reinterpret_cast<const unsigned char*>(tmp_hash),sizeof(tmp_hash),tmp_hash_out);
-			// 	// memcpy(bloom_hash + t * INT_SIZE, tmp_hash_out, std::min(bloom_hash_times - t, (uint32_t)4) * INT_SIZE);
+			// 	// memcpy(bloom_hash + t * uint_size, tmp_hash_out, std::min(bloom_hash_times - t, (uint32_t)4) * uint_size);
 			// }
 			// // printf("hash2\n");
 
 			// // MurmurHash3_x86_32(sub_key_I, 8, hash_seed[j], out); // murmur hash(sub_key,i) to one filter
-			// cont.filters.insert(bloom_hash, bloom_hash_times * INT_SIZE);
+			// cont.filters.insert(bloom_hash, bloom_hash_times * uint_size);
 			// // cont.filters[j].insert(sub[j]);
-
 			sub_info[j].sub_key = sub[j];
 			sub_info[j].identifiers = full_index.size(); // size - j
 
-			// cont.sub_index_liner[j].push_back(sub_info[j]);
+			// if (!j)//cautious for SUBINDEX_NUM
+			cont.sub_index_liner[j].push_back(sub_info[j]);
 
 			// temp_information.sub_fullkey = sub[j];
 			// full_index.push_back(temp_information);
 			memcpy(old_sub, sub, sizeof(sub));
-
-			for (int t = 0; t < bloom_hash_times; t += 4)
-			{
-				tmp_hash[0] = sub[j];
-				tmp_hash[1] = j + t * SUBINDEX_NUM * 2;
-				MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + t * INT_SIZE);
-			}
-			filters->insert(bloom_hash, bloom_hash_times * INT_SIZE);
 		}
 
 		uint32_t tmp_sub[4];
@@ -2112,9 +1768,8 @@ void containers::opt_full_index()
 		{
 			info_idy.push_back(full_key_sorted[i].identify);
 
-			full_key_sorted[i].identify = full_index.size() - 5; // 4 for 4*32bit subkey, 1 for len
-																 // idy_info.identify = full_key_sorted[i].identify;
-																 // full_index.push_back(idy_info);
+			// idy_info.identify = full_key_sorted[i].identify;
+			// full_index.push_back(idy_info);
 		}
 		uint32_t compress_len = for_compressed_size_unsorted((uint32_t *)info_idy.data(), info_idy.size());
 		complen += compress_len - info_idy.size() * 4;
@@ -2147,50 +1802,38 @@ void containers::opt_full_index()
 			}
 		}
 	}
-
-	auto last = std::unique(full_key_sorted.begin(), full_key_sorted.end(), [](info_uncomp &a, info_uncomp &b)
-							{ return a.fullkey[0] == b.fullkey[0] && a.fullkey[1] == b.fullkey[1] && a.identify == b.identify; });
-	full_key_sorted.erase(last, full_key_sorted.end());
-	// full_key_sorted.shrink_to_fit();
-	printf("fullkey len %d filter_nums %d\n", full_key_sorted.size(), filter_nums);
-	// init_filters(filter_nums);//cautious
-	// printf("fullkey len %d filter_nums %d\n", fullkey_len, filter_nums);
-
+	init_filters(filter_nums);
+	printf("fullkey len %d filter_nums %d\n", fullkey_len, filter_nums);
 	printf("complen=%d\n", complen); // 减少的字节数
 	delete[] tmp_compress_data;
 };
 void containers::init_filters(uint32_t filter_nums)
 {
-	// tmp_ids.resize(1000000 * 8 / bits_per_char, static_cast<unsigned char>(0x00));
 	bloom_parameters parameters;
-	// parameters.projected_element_count = 0;		 // filter_nums; // 预计插入initialize_size个元素 //cautious
-	// parameters.false_positive_probability = 0.1; // 期望的误判率为0.1 cautious
-	// parameters.compute_optimal_parameters();	 // 计算最优参数
-	// bloom_hash_times = parameters.optimal_parameters.number_of_hashes;
+	parameters.projected_element_count = filter_nums; // 预计插入initialize_size个元素 //cautious
+	parameters.false_positive_probability = 0.1;	  // 期望的误判率为0.1 cautious
+	parameters.compute_optimal_parameters();		  // 计算最优参数
 	parameters.random_seed = 0xA5A5A5A5;
-
-	parameters.optimal_parameters.table_size = 1000000 * 8;
-	parameters.optimal_parameters.number_of_hashes = 4;
 	bloom_hash_times = parameters.optimal_parameters.number_of_hashes;
-	printf("bloom_hash_times=%d max_table-size %lld\n", bloom_hash_times, parameters.optimal_parameters.table_size);
+	printf("bloom_hash_times=%d\n", bloom_hash_times);
 	// for (int i = 0; i < 4; i++)
-	filters = new bloom_filter(parameters);
+	filters = bloom_filter(parameters);
 
-	// uint32_t tmp_hash[2], hash_size = ((bloom_hash_times >> 2) + (bloom_hash_times & 0x3 != 0) * 4) * INT_SIZE; // ceil(times/4)*4
-	// uint8_t tmp_hash_out[32], bloom_hash[hash_size];
-	// for (int i = 0; i < SUBINDEX_NUM; i++)
-	// {
-	// 	for (int j = 0; j < sub_index_liner[i].size(); j++)
-	// 	{
-	// 		for (int t = 0; t < bloom_hash_times; t += 4)
-	// 		{
-	// 			tmp_hash[0] = sub_index_liner[i][j].sub_key;
-	// 			tmp_hash[1] = i + t * SUBINDEX_NUM * 2;
-	// 			MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + t * INT_SIZE);
-	// 		}
-	// 		filters.insert(bloom_hash, bloom_hash_times * INT_SIZE);
-	// 	}
-	// }
+	uint32_t tmp_hash[2], hash_size = ((bloom_hash_times >> 2) + (bloom_hash_times & 0x3 != 0) * 4) * uint_size; // ceil(times/4)*4
+	uint8_t tmp_hash_out[32], bloom_hash[hash_size];
+	for (int i = 0; i < SUBINDEX_NUM; i++)
+	{
+		for (int j = 0; j < sub_index_liner[i].size(); j++)
+		{
+			for (int t = 0; t < bloom_hash_times; t += 4)
+			{
+				tmp_hash[0] = sub_index_liner[i][j].sub_key;
+				tmp_hash[1] = i + t * SUBINDEX_NUM * 2;
+				MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + t * uint_size);
+			}
+			filters.insert(bloom_hash, bloom_hash_times * uint_size);
+		}
+	}
 };
 void containers::opt_sub_index()
 {
@@ -2783,9 +2426,12 @@ void containers::opt_sub_index()
 
 void containers::make_clusters()
 {
+	uint32_t ids_len[SUBINDEX_NUM][10];memset(ids_len, 0, sizeof(ids_len));
+	uint32_t ids_total[SUBINDEX_NUM][10];memset(ids_total, 0, sizeof(ids_total));
+
 	int j = 0, num = 0, end_idx = 0;
 	uint32_t temp_key = 0;
-	uint32_t pre_size = 0, group_num;
+	uint32_t pre_size = 0;
 	vector<uint32_t> temp_vec, temp_vec_new, temp_subkey;
 	sub_info_comp temp_sub_info;
 	uint32_t begin, end, tmp_begin_add;
@@ -2793,44 +2439,22 @@ void containers::make_clusters()
 	bool is_combine;
 	uint32_t nums_tmp = 0;
 	uint64_t num1 = 0, num2 = 0;
+	resort_que.resize(sub_index_liner[0].size() * 10);
 	vector<uint8_t> tmp_ids;
+	for (int t = 0; t < SUBINDEX_NUM; t++)
+	{
+		if (nums_tmp < sub_index_liner[t].size())
+			nums_tmp = sub_index_liner[t].size();
+	}
+	tmp_linear.resize(nums_tmp);
 
-	uint32_t sub[SUBINDEX_NUM];
-	// for (int t = 0; t < SUBINDEX_NUM; t++)
-	// {
-	// 	if (nums_tmp < sub_index_liner[t].size())
-	// 		nums_tmp = sub_index_liner[t].size();
-	// }
-	nums_tmp = full_key_sorted.size();
-	// tmp_linear.resize(nums_tmp);
-	resort_que.resize(nums_tmp);
-
-	// for (int i = 0; i < SUBINDEX_NUM; i++)
-	// {
-	// 	std::sort(sub_index_liner[i].begin(), sub_index_liner[i].end(), customCompare); // cautious
-	// }
-
-	printf("cluster 1\n");
-
-	printf("cluster 2\n");
-	resort_node tmp_node, tmp_node1;
-	info_uncomp tmp_info, tmp_info1;
-	int tmp_cluster = 0, dis = 0;
-	vector<uint32_t> tmp_clrs;
-	vector<uint32_t> tmp_keys;
-	uint32_t rq_size = 0;
-	vector<uint32_t> max_dist_inClr;
-	uint32_t clr_sum_size = 0, clr_max, clr_min;
 	for (int i = 0; i < SUBINDEX_NUM; i++)
 	{
-		for (int t = 0; t < full_key_sorted.size(); t++)
-		{
-			split(sub, (uint8_t *)full_key_sorted[t].fullkey, sub_index_num, sub_index_plus, sub_keybit);
-			full_key_sorted[t].target = sub[i];
-		}
-		std::sort(full_key_sorted.begin(), full_key_sorted.end(), [](const info_uncomp &a, const info_uncomp &b)
-				  { return a.target < b.target; });
-
+		std::sort(sub_index_liner[i].begin(), sub_index_liner[i].end(), customCompare); // cautious
+	}
+	printf("cluster 1\n");
+	for (int i = 0; i < SUBINDEX_NUM; i++)
+	{
 		if (min_clr_size < 300)
 			clr[i] = kmodes(i);
 		cluster_node cl_d;
@@ -2874,13 +2498,16 @@ void containers::make_clusters()
 		cl_d.subkey = -1; // without practical meaning
 		clr[i].push_back(cl_d);
 		printf("clr_size %d %d\n", i, clr[i].size());
-		// }
-		// for (int i = 0; i < SUBINDEX_NUM; i++)
-		// {
+	}
 
-		clr_sum_size = 0;
-		clr_max = 0;
-		clr_min = UINT32_MAX;
+	printf("cluster 2\n");
+	resort_node tmp_node, tmp_node1;
+	int tmp_cluster = 0, dis = 0;
+	vector<uint32_t> tmp_clrs;
+	vector<uint32_t> tmp_keys;
+	uint32_t rq_size = 0;
+	for (int i = 0; i < SUBINDEX_NUM; i++)
+	{
 		printf("hashtimes %d cluster 3 %d %d\n", bloom_hash_times, i, SUBINDEX_NUM);
 		rq_size = 0;
 		tmp_clrs.clear();
@@ -2888,20 +2515,15 @@ void containers::make_clusters()
 		clr_nums.clear();
 		// resort_que.clear();
 		clr_nums.resize(clr[i].size());
-		max_dist_inClr.resize(clr[i].size());
-		for (int j = 0; j < full_key_sorted.size(); j++)
+		for (int j = 0; j < sub_index_liner[i].size(); j++)
 		{
 			tmp_dist = UINT32_MAX;
 			tmp_cluster = -1;
-			// tmp_node.sub_info.sub_key = sub_index_liner[i][j].sub_key;
-			// tmp_node.sub_info.identifiers = sub_index_liner[i][j].identifiers;
-
-			// tmp_node.sub_info.sub_key = full_key_sorted[j].target;
-			// tmp_node.sub_info.identifiers = full_key_sorted[j].identify;
-
+			tmp_node.sub_info.sub_key = sub_index_liner[i][j].sub_key;
+			tmp_node.sub_info.identifiers = sub_index_liner[i][j].identifiers;
 			for (int t = 0; t < (clr[i].size() - 1); t++)
 			{
-				dis = popcount(full_key_sorted[j].target ^ clr[i][t].subkey);
+				dis = bitset<32>(sub_index_liner[i][j].sub_key ^ clr[i][t].subkey).count();
 				if (dis < tmp_dist)
 				{
 					tmp_clrs.clear();
@@ -2914,14 +2536,12 @@ void containers::make_clusters()
 					// tmp_clrs.push_back(t);
 				}
 			}
-			if (tmp_cluster >= 0 && tmp_dist <= max_dist) // cautious
+			if (tmp_cluster >= 0 && tmp_dist <= max_dist)
 			{
-				if (tmp_dist > max_dist_inClr[tmp_cluster])
-					max_dist_inClr[tmp_cluster] = tmp_dist;
 				for (auto &val : tmp_clrs)
 				{
 					tmp_node.cluster_id = val;
-					// tmp_node.my_id = clr_nums[val];
+					tmp_node.my_id = clr_nums[val];
 					clr_nums[val]++;
 					if (rq_size >= resort_que.size())
 						printf("error rq_size %d %d\n", rq_size, resort_que.size());
@@ -2937,7 +2557,7 @@ void containers::make_clusters()
 			{
 				tmp_cluster = clr[i].size() - 1;
 				tmp_node.cluster_id = clr[i].size() - 1;
-				// tmp_node.my_id = clr_nums[tmp_cluster];
+				tmp_node.my_id = clr_nums[tmp_cluster];
 				clr_nums[tmp_cluster]++;
 				// resort_que[j] = tmp_node;
 				if (rq_size >= resort_que.size())
@@ -2947,66 +2567,17 @@ void containers::make_clusters()
 			}
 		}
 
-		uint32_t minxx = 0;
-		for (auto val : max_dist_inClr)
-		{
-			if (val < max_dist)
-				minxx++;
-		}
-		printf("minxx-------------------- %d %d\n", minxx, clr[i].size() - 1);
-
 		nums_tmp = 0;
 		for (int t = 0; t < clr[i].size(); t++)
 		{
 			nums_tmp += clr_nums[t];
 		}
-		// printf("cluster 4 last-size%d total-num%d sub-linear-size %d\n", clr_nums[clr[i].size() - 1], nums_tmp, sub_index_liner[i].size());
+		printf("cluster 4 last-size%d total-num%d sub-linear-size %d\n", clr_nums[clr[i].size() - 1], nums_tmp, sub_index_liner[i].size());
 		clr[i][0].begin_idx = 0;
 		for (int t = 1; t < clr[i].size(); t++)
 		{
-			if (clr_nums[t - 1] == 0)
-				printf("error no node in cluster  %d\n", t);
 			clr[i][t].begin_idx = clr[i][t - 1].begin_idx + clr_nums[t - 1];
 		}
-
-		vector<uint32_t> tmp_clr_nums;
-		tmp_clr_nums.resize(clr[i].size());
-		// cluster_id is the index for each node sort by cluster {0,0,0,  2,2,2 1,1,} =>  {0,1,2, 5,6,7  3,4,}
-		for (auto &val : resort_que)
-		{
-			tmp_clr_nums[val.cluster_id]++;
-			val.cluster_id = tmp_clr_nums[val.cluster_id] - 1 + clr[i][val.cluster_id].begin_idx;
-		}
-		uint32_t tmp_index = 0, changed_index;
-		for (int j = 0; j < rq_size; j++)
-		{
-			tmp_node1 = resort_que[j];
-			tmp_info1 = full_key_sorted[j];
-			tmp_index = resort_que[j].cluster_id;
-			if (j == tmp_index)
-				continue;
-			changed_index = j;
-			while (changed_index != tmp_index)
-			{
-				tmp_node = resort_que[tmp_index];
-				tmp_info = full_key_sorted[tmp_index];
-
-				full_key_sorted[tmp_index] = tmp_info1;
-				resort_que[tmp_index] = tmp_node1;
-				changed_index = tmp_index;
-
-				tmp_info1 = tmp_info;
-				tmp_node1 = tmp_node;
-				tmp_index = tmp_node.cluster_id;
-			}
-		}
-		// for (auto it = clr[i].begin(); it < clr[i].end();)
-		// {
-		// 	if (it->begin_idx == (it + 1)->begin_idx)
-		// 		it = clr[i].erase(it);
-		// 	else
-		// 		it++;
-		// }
 		// printf("idx %d idx1 %d\n", clr[i][clr[i].size() - 1].begin_idx + clr_nums[clr[i].size() - 1], resort_que.size());
 		// int maxmm = -1;
 		// for (int j = 0; j < resort_que.size(); j++)
@@ -3019,43 +2590,26 @@ void containers::make_clusters()
 		// }
 
 		// let same cluster's node in same region
-		// for (int j = 0; j < rq_size; j++)
-		// {
-		// 	tmp_index = clr[i][resort_que[j].cluster_id].begin_idx + resort_que[j].my_id;
-		// 	if (j == tmp_index)
-		// 		continue;
-		// 	changed_index = j;
-		// 	tmp_node1 = resort_que[j];
-		// 	tmp_info1 = full_key_sorted[j];
-		// 	// cautious ,loop for changde to a right position
-		// 	while (changed_index != tmp_index)
-		// 	{
-		// 		if (tmp_index >= resort_que.size())
-		// 			printf("error index %d of maxsize %d\n", tmp_index, resort_que.size());
-		// 		tmp_node = resort_que[tmp_index];
-		// 		tmp_info = full_key_sorted[tmp_index];
-
-		// 		full_key_sorted[tmp_index] = tmp_info1;
-		// 		resort_que[tmp_index] = tmp_node1;
-		// 		changed_index = tmp_index;
-
-		// 		tmp_info1 = tmp_info;
-		// 		tmp_node1 = tmp_node;
-		// 		tmp_index = tmp_node.my_id + clr[i][tmp_node.cluster_id].begin_idx;
-		// 	}
-		// }
-
-		for (int t = 0; t < clr[i].size() - 1; t++)
+		uint32_t tmp_index = 0, changed_index;
+		for (int j = 0; j < rq_size; j++)
 		{
-			clr_sum_size = clr[i][t + 1].begin_idx - clr[i][t].begin_idx;
-			if (clr_sum_size > clr_max)
-				clr_max = clr_sum_size;
-			if (clr_sum_size < clr_min)
-				clr_min = clr_sum_size;
+			tmp_index = clr[i][resort_que[j].cluster_id].begin_idx + resort_que[j].my_id;
+			if (j == tmp_index)
+				continue;
+			changed_index = j;
+			tmp_node1 = resort_que[j];
+			// cautious ,loop for changde to a right position
+			while (changed_index != tmp_index)
+			{
+				if (tmp_index >= resort_que.size())
+					printf("error index %d of maxsize %d\n", tmp_index, resort_que.size());
+				tmp_node = resort_que[tmp_index];
+				resort_que[tmp_index] = tmp_node1;
+				changed_index = tmp_index;
+				tmp_node1 = tmp_node;
+				tmp_index = tmp_node.my_id + clr[i][tmp_node.cluster_id].begin_idx;
+			}
 		}
-		printf("avg %.2f cluster 4.1 max %d min %d\n", (double)(full_key_sorted.size() - clr[i][clr[i].size() - 1].begin_idx) / (clr[i].size() - 1), clr_max, clr_min);
-		if (clr[i].size() > 1)
-			combine_clr_min = ceil((double)(full_key_sorted.size() - clr[i][clr[i].size() - 1].begin_idx) / ((clr[i].size() - 1) * 4));
 
 		printf("cluster 5 %d\n", rq_size);
 		// sort every cluster? (if not sorted)
@@ -3082,22 +2636,19 @@ void containers::make_clusters()
 			temp_vec_new.clear();
 			temp_vec.clear();
 			tmp_keys.clear();
-
-			temp_key = full_key_sorted[j].target; // resort_que[j].sub_info.sub_key;
+			temp_key = resort_que[j].sub_info.sub_key;
 			temp_sub_info.sub_key = temp_key;
 			pre_size = 0;
 			tmp_begin_add = 0;
 			end = 0;
 			is_combine = false;
-			group_num = 1;
 
 			if (c_idx == clr[i].size() - 1)
 				end_idx = rq_size;
 			else
 				end_idx = clr[i][c_idx + 1].begin_idx;
 
-			bool is_comb_clr = ((end_idx - j) > combine_clr_min ? true : false); //(c_idx == clr[i].size() - 1 ? true : false);//true; //
-			// bool is_comb_clr = (c_idx == clr[i].size() - 1 ? true : false); // cautious TODO
+			bool is_comb_clr = ((end_idx - j) > combine_clr_min ? true : false);
 			if (!is_comb_clr)
 				clr[i][c_idx].is_combined = 0;
 			else
@@ -3105,16 +2656,16 @@ void containers::make_clusters()
 
 			for (; j < end_idx; j++)
 			{
-				if (full_key_sorted[j].target == temp_key)
+				if (resort_que[j].sub_info.sub_key == temp_key)
 				{
-					temp_vec.push_back(full_key_sorted[j].identify);
+					temp_vec.push_back(resort_que[j].sub_info.identifiers);
 				}
 				else
 				{
 					uint32_t same_num = 0;
 					for (int t = j; t < end_idx; t++)
 					{
-						if (full_key_sorted[t].target == full_key_sorted[j].target)
+						if (resort_que[t].sub_info.sub_key == resort_que[j].sub_info.sub_key)
 						{
 							same_num++;
 						}
@@ -3123,17 +2674,50 @@ void containers::make_clusters()
 							break;
 						}
 					}
+			
+			if(temp_vec.size()<2){
+				ids_len[i][6]++;ids_total[i][6]+=temp_vec.size();
+			}else 
+			if(temp_vec.size()<5){
+				ids_len[i][7]++;
+				ids_total[i][7]+=temp_vec.size();
+			}
+			else if (temp_vec.size() < 10)
+			{
+				ids_len[i][0]++;
+				ids_total[i][0]+=temp_vec.size();
+			}
+			else if (temp_vec.size() < 100)
+			{
+				ids_len[i][1]++;
+				ids_total[i][1]+=temp_vec.size();
+			}
+			else if (temp_vec.size() < 500)
+			{
+				ids_len[i][2]++;
+				ids_total[i][2]+=temp_vec.size();
+			}else if (temp_vec.size() < 1000)
+			{
+			ids_len[i][3]++;
+			ids_total[i][3]+=temp_vec.size();}
+			else if (temp_vec.size() < 2000)
+			{
+			ids_len[i][4]++;
+			ids_total[i][4]+=temp_vec.size();}
+			else {
+				ids_len[i][5]++;
+				ids_total[i][5]+=temp_vec.size();
+			}
 					// combine subkey后产生的block大小不应该大于aggre_size
-					if (is_comb_clr && (temp_vec.size() + temp_subkey.size() + 4 + 1 + same_num) <= PAGE_SIZE)
+					if (is_comb_clr && (temp_vec.size() + 1 + same_num) < PAGE_SIZE)
 					{
-						group_num++;
 						num2++;
 						tmp_keys.push_back(temp_key);
 
 						temp_subkey.push_back(temp_key);
 						temp_subkey.push_back(temp_vec.size() - pre_size);
 						pre_size = temp_vec.size();
-						temp_key = full_key_sorted[j].target;
+						temp_key = resort_que[j].sub_info.sub_key;
 						temp_sub_info.sub_key = temp_key;
 						j--;
 						is_combine = true;
@@ -3148,98 +2732,149 @@ void containers::make_clusters()
 
 						uint32_t total_key = temp_subkey.size() / 2;
 						temp_vec_new.push_back(total_key);
-						// // std::sort(temp_vec.begin(), temp_vec.end());
-						// for (int t = 0; t < temp_subkey.size(); t += 2)
-						// 	temp_vec_new.push_back(temp_subkey[t]);
+						// std::sort(temp_vec.begin(), temp_vec.end());
+						for (int t = 0; t < temp_subkey.size(); t += 2)
+							temp_vec_new.push_back(temp_subkey[t]);
 
 						// 不存储每个的len，存储-id作为表述
 						uint32_t tmp_sum = -temp_vec.size();
 						for (int t = 0, k = 0; t < temp_subkey.size(); t++)
 						{
-							temp_vec_new.push_back(temp_subkey[t]);
+							// temp_vec_new.push_back(temp_subkey[t]);
 							t++;
-							temp_vec_new.push_back(temp_subkey[t]);
+							// temp_vec_new.push_back(temp_subkey[t]);
 							tmp_sum += temp_subkey[t];
 							for (int k0 = k; k < k0 + temp_subkey[t]; k++)
 							{
-								// if (k0 == k)
-								// {
-								// 	temp_vec_new.push_back(-temp_vec[k] - 1);
-								// }
-								// else
-								temp_vec_new.push_back(temp_vec[k]);
+								if (k0 == k)
+								{
+									temp_vec_new.push_back(-temp_vec[k]);
+								}
+								else
+									temp_vec_new.push_back(temp_vec[k]);
 							}
 						}
-						temp_vec_new[0] = temp_vec_new.size(); // cautious for combine
 
 						temp_vec.clear();
 						temp_vec = temp_vec_new;
 						temp_vec_new.clear();
 						temp_subkey.clear();
 						pre_size = 0;
-						if (temp_vec.size() > PAGE_SIZE)
-							printf("error of aggre_size! %d\n", temp_vec.size());
 					}
 
-					// // flag for comb32 0xfffffff
-					// uint32_t similar_num = 0;
-					// if (!is_combine && temp_vec.size() > MIN_INC_NUM)
-					// {
-					// 	for (int dt = 0; dt <= inc_max_dist[i]; dt++)
-					// 	{
-					// 		for (auto &val : C_0_TO_subhammdis[dt])
-					// 		{
-					// 			if (val == 0)
-					// 				continue;
-					// 			uint32_t tmpkey1 = temp_key ^ val;
-					// 			auto its = std::lower_bound(sub_index_liner[i].begin(), sub_index_liner[i].end(), tmpkey1, compareFirst);
-					// 			if (its != sub_index_liner[i].end() && its->sub_key == tmpkey1)
-					// 			{
-					// 				similar_num += 2; // cautious
-					// 			}
-					// 		}
-					// 	}
-					// 	if (similar_num + temp_vec.size() > 5000) // cautious
-					// 	{
-					// 		similar_num = 0;
-					// 		goto out_jmp;
-					// 	}
-					// 	// the skipSize for near_keys. add 2 for numsOfcomp, comb32
-					// 	int comp_len1 = for_compressed_size_sorted(temp_vec.data(), temp_vec.size()) + 2 * sizeof(uint32_t);
-					// 	if (comp_len1 < 0)
-					// 		printf("error! comp_len is max than int32 %d\n", comp_len1);
-					// 	for (uint32_t t = 0, tmp = -comp_len1; t < 4; t++)
-					// 	{
-					// 		tmp_ids.push_back(tmp & 0xff);
-					// 		// sub_identifiers[i].push_back(tmp & 0xff);
-					// 		tmp >>= 8;
-					// 	}
-					// 	mask = MASK_SIM;
-					// 	tmp_begin_add += sizeof(uint32_t);
-					// }
-
-					uint32_t temp_vec_size = temp_vec.size() * sizeof(uint32_t);
-					tmp_ids.resize(temp_vec_size);
-					memcpy(tmp_ids.data(), temp_vec.data(), temp_vec_size);
+					// flag for comb32 0xfffffff
+					uint32_t similar_num = 0;
+					if (!is_combine && temp_vec.size() > MIN_INC_NUM)
+					{
+						for (int dt = 0; dt <= inc_max_dist[i]; dt++)
+						{
+							for (auto &val : C_0_TO_subhammdis[dt])
+							{
+								if (val == 0)
+									continue;
+								uint32_t tmpkey1 = temp_key ^ val;
+								auto its = std::lower_bound(sub_index_liner[i].begin(), sub_index_liner[i].end(), tmpkey1, compareFirst);
+								if (its != sub_index_liner[i].end() && its->sub_key == tmpkey1)
+								{
+									similar_num += 2; // cautious
+								}
+							}
+						}
+						if (similar_num + temp_vec.size() > 5000) // cautious
+						{
+							similar_num = 0;
+							goto out_jmp;
+						}
+						// the skipSize for near_keys. add 2 for numsOfcomp, comb32
+						int comp_len1 = for_compressed_size_sorted(temp_vec.data(), temp_vec.size()) + 2 * sizeof(uint32_t);
+						if (comp_len1 < 0)
+							printf("error! comp_len is max than int32 %d\n", comp_len1);
+						for (uint32_t t = 0, tmp = -comp_len1; t < 4; t++)
+						{
+							tmp_ids.push_back(tmp & 0xff);
+							// sub_identifiers[i].push_back(tmp & 0xff);
+							tmp >>= 8;
+						}
+						mask = MASK_SIM;
+						tmp_begin_add += sizeof(uint32_t);
+					}
 
 					// the first 4 bytes is the length of the uncompressed data
 				out_jmp:
+					for (uint32_t t = 0, tmp = temp_vec.size(); t < 4; t++)
+					{
+						tmp_ids.push_back(tmp & 0xff);
+						// sub_identifiers[i].push_back(tmp & 0xff);
+						tmp >>= 8;
+					}
+					tmp_begin_add += sizeof(uint32_t);
 					num1 += temp_vec.size();
 
-					max_id_page = std::max(max_id_page, temp_vec_size);
-					temp_sub_info.length = temp_vec.size();
-					// temp_sub_info.length |= mask;
-					if (is_combine)
+					// compute the length of the compressed data
+					int comp_len = 0;
+					if (!is_combine)
 					{
-						temp_sub_info.length = -1; //|= MASK_INF
-						tmp_ids.resize(tmp_ids.size() + (PAGE_SIZE_B - tmp_ids.size() % PAGE_SIZE_B) % PAGE_SIZE_B);
-						if (tmp_ids.size() != PAGE_SIZE_B)
-							printf("error tmpids_size! %d\n", tmp_ids.size());
+
+						comp_len = for_compressed_size_sorted(temp_vec.data(), temp_vec.size());
+
+						tmp_ids.resize(tmp_ids.size() + comp_len);
+						for_compress_sorted(temp_vec.data(), tmp_ids.data() + tmp_ids.size() - comp_len, temp_vec.size());
+
+						// sub_identifiers[i].resize(sub_identifiers[i].size() + comp_len);
+						// // compress data
+						// //  if the length of the uncompressed data is less than COMPRESS_MIN, we don't compress it
+						// for_compress_sorted(temp_vec.data(), sub_identifiers[i].data() + begin + tmp_begin_add, temp_vec.size());
+					}
+					else
+					{
+						comp_len = for_compressed_size_unsorted(temp_vec.data(), temp_vec.size());
+						tmp_ids.resize(tmp_ids.size() + comp_len);
+						for_compress_unsorted(temp_vec.data(), tmp_ids.data() + tmp_ids.size() - comp_len, temp_vec.size());
+
+						// sub_identifiers[i].resize(sub_identifiers[i].size() + comp_len);
+						// for_compress_unsorted(temp_vec.data(), sub_identifiers[i].data() + begin + tmp_begin_add, temp_vec.size());
 					}
 
+					tmp_begin_add += comp_len;
+
+					if (similar_num)
+					{
+						// for (int dt = 0; dt <= inc_max_dist[i]; dt++)
+						// {
+						// 	for (auto &val : C_0_TO_subhammdis[dt])
+						// 	{
+						// 		if (val == 0)
+						// 			continue;
+						// 		uint32_t tmpkey1 = temp_key ^ val;
+						// 		auto its = std::lower_bound(sub_index_liner[i].begin(), sub_index_liner[i].end(), tmpkey1, compareFirst);
+						// 		if (its != sub_index_liner[i].end() && its->sub_key == tmpkey1)
+						// 		{
+						// 			similar_num += 3;
+						// 		}
+						// 	}
+						// }
+
+						for (uint32_t t = 0, tmp = similar_num / 2; t < 4; t++)
+						{
+							tmp_ids.push_back(tmp & 0xff);
+							// sub_identifiers[i].push_back(tmp & 0xff);
+							tmp >>= 8;
+						}
+
+						tmp_ids.resize(tmp_ids.size() + similar_num * sizeof(uint32_t));
+						// sub_identifiers[i].resize(sub_identifiers[i].size() + (similar_num) * sizeof(uint32_t));
+						// tmp_begin_add += (similar_num * sizeof(uint32_t)) + sizeof(uint32_t);
+					}
+
+					max_id_page = std::max(max_id_page, (uint32_t)tmp_ids.size());
+					temp_sub_info.length = tmp_ids.size();
+					temp_sub_info.length |= mask;
+					if (is_combine)
+						temp_sub_info.length |= MASK_INF;
+
 					enc_page_block(tmp_ids.data(), tmp_ids.size());
-					if (tmp_ids.size() % PAGE_SIZE_B) //*4 byte
-						tmp_ids.resize(tmp_ids.size() + (PAGE_SIZE_B - tmp_ids.size() % PAGE_SIZE_B) % PAGE_SIZE_B);
+					if (tmp_ids.size() % PAGE_SIZE)
+						tmp_ids.resize(tmp_ids.size() + (PAGE_SIZE - tmp_ids.size() % PAGE_SIZE) % PAGE_SIZE);
 					ocall_write_ids(&temp_sub_info.skiplen, id_index[i], i, tmp_ids.data(), tmp_ids.size());
 
 					tmp_ids.clear();
@@ -3249,12 +2884,16 @@ void containers::make_clusters()
 
 					tmp_keys.push_back(temp_sub_info.sub_key);
 					num2++;
+					for (auto val : tmp_keys)
+					{
+						tmp_linear[tmp_linear_size] = (sub_info_comp{val, temp_sub_info.skiplen, sub_linear_comp[i].size() - 1}); // cautious for .size is the pointer to sub_comp
+						tmp_linear_size++;
+					}
 					tmp_keys.clear();
 
 					begin += tmp_begin_add;
-					temp_key = full_key_sorted[j].target;
+					temp_key = resort_que[j].sub_info.sub_key;
 					temp_sub_info.sub_key = temp_key;
-					group_num++;
 					temp_vec.clear();
 					tmp_begin_add = 0;
 					j--;
@@ -3271,60 +2910,76 @@ void containers::make_clusters()
 
 					uint32_t total_key = temp_subkey.size() / 2;
 					temp_vec_new.push_back(total_key);
-					// // std::sort(temp_vec.begin(), temp_vec.end());
-					// for (int t = 0; t < temp_subkey.size(); t += 2)
-					// 	temp_vec_new.push_back(temp_subkey[t]);
+					// std::sort(temp_vec.begin(), temp_vec.end());
+					for (int t = 0; t < temp_subkey.size(); t += 2)
+						temp_vec_new.push_back(temp_subkey[t]);
 
 					// std::sort(temp_vec.begin(), temp_vec.end());
 					// uint32_t tmp_sum = 0;
 					for (int t = 0, k = 0; t < temp_subkey.size(); t++)
 					{
-						temp_vec_new.push_back(temp_subkey[t]);
+						// temp_vec_new.push_back(temp_subkey[t]);
 						t++;
-						temp_vec_new.push_back(temp_subkey[t]);
+						// temp_vec_new.push_back(temp_subkey[t]);
 						// tmp_sum += temp_subkey[t];
 						for (int k0 = k; k < k0 + temp_subkey[t]; k++)
 						{
-							// if (k0 == k)
-							// 	temp_vec_new.push_back(-temp_vec[k] - 1);
-							// else
-							temp_vec_new.push_back(temp_vec[k]);
+							if (k0 == k)
+								temp_vec_new.push_back(-temp_vec[k]);
+							else
+								temp_vec_new.push_back(temp_vec[k]);
 						}
 					}
-					temp_vec_new[0] = temp_vec_new.size(); // cautious for combine
 					temp_vec.clear();
 					temp_vec = temp_vec_new;
 					temp_vec_new.clear();
 					temp_subkey.clear();
 					pre_size = 0;
-					if (temp_vec.size() > PAGE_SIZE)
-						printf("error of aggre_size! %d\n", temp_vec.size());
 				}
 
-				tmp_ids.resize(temp_vec.size() * sizeof(uint32_t));
-				memcpy(tmp_ids.data(), temp_vec.data(), temp_vec.size() * sizeof(uint32_t));
-				max_id_page = std::max(max_id_page, (uint32_t)tmp_ids.size());
-				temp_sub_info.length = temp_vec.size();
-				// temp_sub_info.length |= mask;
-				if (is_combine)
+				for (int t = 0, tmp = temp_vec.size(); t < 4; t++)
 				{
-					temp_sub_info.length = -1; // |= MASK_INF;
-					tmp_ids.resize(tmp_ids.size() + (PAGE_SIZE_B - tmp_ids.size() % PAGE_SIZE_B) % PAGE_SIZE_B);
-					if (tmp_ids.size() != PAGE_SIZE_B)
-						printf("error tmpids_size! %d\n", tmp_ids.size());
+					tmp_ids.push_back(tmp & 0xff);
+					// sub_identifiers[i].push_back(tmp & 0xff);
+					tmp >>= 8;
 				}
+				// std::sort(temp_vec.begin(), temp_vec.end());
+
+				if (!is_combine)
+				{
+					int comp_len = for_compressed_size_sorted(temp_vec.data(), temp_vec.size());
+					tmp_ids.resize(tmp_ids.size() + comp_len);
+					for_compress_sorted(temp_vec.data(), tmp_ids.data() + tmp_ids.size() - comp_len, temp_vec.size());
+
+					// sub_identifiers[i].resize(sub_identifiers[i].size() + comp_len);
+					// for_compress_sorted(temp_vec.data(), sub_identifiers[i].data() + begin + 4, temp_vec.size());
+				}
+				else
+				{
+					int comp_len = for_compressed_size_unsorted(temp_vec.data(), temp_vec.size());
+					tmp_ids.resize(tmp_ids.size() + comp_len);
+					for_compress_unsorted(temp_vec.data(), tmp_ids.data() + tmp_ids.size() - comp_len, temp_vec.size());
+					// sub_identifiers[i].resize(sub_identifiers[i].size() + comp_len);
+					// for_compress_unsorted(temp_vec.data(), sub_identifiers[i].data() + begin + 4, temp_vec.size());
+				}
+
+				max_id_page = std::max(max_id_page, (uint32_t)tmp_ids.size());
+				temp_sub_info.length = tmp_ids.size();
+				temp_sub_info.length |= mask;
+				if (is_combine)
+					temp_sub_info.length |= MASK_INF;
 
 				enc_page_block(tmp_ids.data(), tmp_ids.size());
-				if (tmp_ids.size() % PAGE_SIZE_B)
-					tmp_ids.resize(tmp_ids.size() + (PAGE_SIZE_B - tmp_ids.size() % PAGE_SIZE_B) % PAGE_SIZE_B);
+				if (tmp_ids.size() % PAGE_SIZE)
+					tmp_ids.resize(tmp_ids.size() + (PAGE_SIZE - tmp_ids.size() % PAGE_SIZE) % PAGE_SIZE);
 				ocall_write_ids(&temp_sub_info.skiplen, id_index[i], i, tmp_ids.data(), tmp_ids.size());
 
 				tmp_keys.push_back(temp_sub_info.sub_key);
-				// for (auto val : tmp_keys)
-				// {
-				// 	tmp_linear[tmp_linear_size] = (sub_info_comp{val, temp_sub_info.skiplen, sub_linear_comp[i].size()}); // cautious for .size is the pointer to sub_comp
-				// 	tmp_linear_size++;
-				// }
+				for (auto val : tmp_keys)
+				{
+					tmp_linear[tmp_linear_size] = (sub_info_comp{val, temp_sub_info.skiplen, sub_linear_comp[i].size()}); // cautious for .size is the pointer to sub_comp
+					tmp_linear_size++;
+				}
 
 				tmp_keys.clear();
 				sub_linear_comp[i].emplace_back(temp_sub_info);
@@ -3332,47 +2987,266 @@ void containers::make_clusters()
 				tmp_ids.clear();
 				mask = 0;
 			}
-			clr[i][c_idx].group_size = group_num;
 		}
 
 		ocall_init_id_point(&id_point[i], id_index[i], i);
 
+		// if (tmp_linear_size != sub_index_liner[i].size())
+		// 	printf("error %d %d %d %d\n", tmp_linear_size, sub_index_liner[i].size(), num1, num2);
+		// memcpy(tmp_linear.data(), sub_linear_comp[i].data(), sub_linear_comp[i].size() * sizeof(sub_info_comp));
+		// tmp_linear_size = sub_linear_comp[i].size();
+		std::sort(tmp_linear.begin(), tmp_linear.begin() + tmp_linear_size, customCompare_comp);
 		uint32_t comp_idx = 0;
 		printf("clr %d\n", num1++);
-
-		for (auto it = clr[i].begin(); it < clr[i].end() - 1;)
 		{
-			if (it->begin_idx == (it + 1)->begin_idx)
-				it = clr[i].erase(it);
-			else
-				it++;
+			for (int c_idx = 0; c_idx < (clr[i].size()); c_idx++)
+			{
+				tmp_index = clr[i][c_idx].begin_idx;
+				begin = tmp_index;
+				// clr[i][c_idx].begin_idx = sub_linear_comp[i].size();
+				// begin = sub_identifiers[i].size();
+				if (tmp_index >= sub_linear_comp[i].size())
+					continue; // cautious
+
+				j = begin_s[c_idx];
+				temp_subkey.clear();
+				temp_vec_new.clear();
+				temp_vec.clear();
+				temp_key = resort_que[j].sub_info.sub_key;
+				temp_sub_info.sub_key = temp_key;
+				pre_size = 0;
+				tmp_begin_add = 0;
+				end = 0;
+				is_combine = false;
+
+				// printf("cxxxlr %d\n", num1++);
+				if (c_idx == clr[i].size() - 1)
+					end_idx = rq_size;
+				else
+					end_idx = begin_s[c_idx + 1];
+				bool is_comb_clr = clr[i][c_idx].is_combined; //((end_idx - j) > combine_clr_min ? true : false);
+				for (; j < end_idx; j++)
+				{
+					if (resort_que[j].sub_info.sub_key == temp_key)
+					{
+						temp_vec.push_back(resort_que[j].sub_info.identifiers);
+					}
+					else
+					{
+						uint32_t same_num = 0;
+						for (int t = j; t < end_idx; t++)
+						{
+							if (resort_que[t].sub_info.sub_key == resort_que[j].sub_info.sub_key)
+							{
+								same_num++;
+							}
+							else
+							{
+								break;
+							}
+						}
+						// combine subkey后产生的block大小不应该大于aggre_size
+						if (is_comb_clr && (temp_vec.size() + 1 + same_num) < PAGE_SIZE)
+						{
+							temp_subkey.push_back(temp_key);
+							temp_subkey.push_back(temp_vec.size() - pre_size);
+							pre_size = temp_vec.size();
+							temp_key = resort_que[j].sub_info.sub_key;
+							temp_sub_info.sub_key = temp_key;
+							j--;
+							is_combine = true;
+							continue;
+						}
+						if (is_combine)
+						{
+							temp_subkey.push_back(temp_key);
+							temp_subkey.push_back(temp_vec.size() - pre_size);
+							pre_size = temp_vec.size();
+							// is_combine = false;
+
+							uint32_t total_key = temp_subkey.size() / 2;
+							temp_vec_new.push_back(total_key);
+							// std::sort(temp_vec.begin(), temp_vec.end());
+							for (int t = 0; t < temp_subkey.size(); t += 2)
+								temp_vec_new.push_back(temp_subkey[t]);
+
+							// 不存储每个的len，存储-id作为表述
+							uint32_t tmp_sum = -temp_vec.size();
+							for (int t = 0, k = 0; t < temp_subkey.size(); t++)
+							{
+								// temp_vec_new.push_back(temp_subkey[t]);
+								t++;
+								// temp_vec_new.push_back(temp_subkey[t]);
+								tmp_sum += temp_subkey[t];
+								for (int k0 = k; k < k0 + temp_subkey[t]; k++)
+								{
+									if (k0 == k)
+									{
+										temp_vec_new.push_back(-temp_vec[k]);
+									}
+									else
+										temp_vec_new.push_back(temp_vec[k]);
+								}
+							}
+
+							temp_vec.clear();
+							temp_vec = temp_vec_new;
+							temp_vec_new.clear();
+							temp_subkey.clear();
+							pre_size = 0;
+						}
+						// printf("clzccczzr %d\n", num1++);
+
+						// compute the length of the compressed data
+						int comp_len = 0;
+						if (!is_combine)
+						{
+							comp_len = for_compressed_size_sorted(temp_vec.data(), temp_vec.size());
+							// sub_identifiers[i].resize(sub_identifiers[i].size() + comp_len);
+
+							// compress data
+							//  if the length of the uncompressed data is less than COMPRESS_MIN, we don't compress it
+							// for_compress_sorted(temp_vec.data(), sub_identifiers[i].data() + begin + tmp_begin_add, temp_vec.size());
+						}
+						else
+						{
+							comp_len = for_compressed_size_unsorted(temp_vec.data(), temp_vec.size());
+							// sub_identifiers[i].resize(sub_identifiers[i].size() + comp_len);
+							// for_compress_unsorted(temp_vec.data(), sub_identifiers[i].data() + begin + tmp_begin_add, temp_vec.size());
+						}
+						// printf("clzzttzr %d, %d\n", sub_identifiers[i].size(), begin);
+
+						// int tmp_nums = *(uint32_t *)&sub_identifiers[i][begin];
+						// if (!is_combine && temp_vec.size() > MIN_INC_NUM && (tmp_nums >= 0))
+						// 	printf("nums is wrong %d\n", tmp_nums);
+						// begin += comp_len + 4; // size of uncomp
+						// // printf("clzzzr %d\n", num1++);
+						vector<uint8_t> dec_ids;
+						if (sub_linear_comp[i][comp_idx].length & MASK_SIM)
+						{
+							uint8_t *enc_ids = id_point[i] + sub_linear_comp[i][comp_idx].skiplen;
+							uint32_t enc_len = sub_linear_comp[i][comp_idx].length & MASK_LEN;
+							// uint8_t *dec_ids = new uint8_t[enc_len];
+							dec_ids.resize(enc_len);
+							dec_page_block(enc_ids, enc_len, dec_ids.data());
+							begin = comp_len + sizeof(uint32_t);
+
+							// add Byte for sizeof comb32, size of skipSize
+							// uint32_t tmpLen = *(uint32_t *)&sub_identifiers[i][begin + 4], tmps = 0;
+							begin += (sizeof(uint32_t) * 2);
+							uint32_t wrt_index = begin;
+							for (int dt = 0; dt <= inc_max_dist[i]; dt++)
+							{
+								for (auto &val : C_0_TO_subhammdis[dt])
+								{
+									if (val == 0)
+										continue;
+									uint32_t tmpkey1 = temp_key ^ val;
+
+									auto its = std::lower_bound(sub_index_liner[i].begin(), sub_index_liner[i].end(), tmpkey1, compareFirst);
+									if (its != sub_index_liner[i].end() && its->sub_key == tmpkey1)
+									{
+										// sub_info_comp its2 = find_key_clrs(tmpkey1, i);
+										// if (its2.begin == sub_identifiers[i].size() && its2.sub_key == sub_identifiers[i].size())
+										// 	printf("error ! subkey %d exist in sub_liner, not int sub_comp\n", tmpkey1);
+										auto its2 = std::lower_bound(tmp_linear.begin(), tmp_linear.begin() + tmp_linear_size, tmpkey1, compareFirst_comp);
+										// if (its2 >= (tmp_linear.begin() + tmp_linear_size) || (its2->sub_key != tmpkey1 && its2->begin >= 0)) //&& its->sub_key == tmpsub1
+										// {
+										// 	printf("error ! subkey %d exist in sub_liner, not int sub_comp\n", tmpkey1);
+										// 	// return;
+										// }
+										// tmps++;
+										// if (begin >= sub_identifiers[i].size())
+										// 	printf("error %d %d\n", begin, sub_identifiers[i].size());
+										for (uint32_t t = 0, tmp = tmpkey1; t < 4; t++)
+										{
+											dec_ids[t + begin] = (tmp & 0xff);
+											tmp >>= 8;
+										}
+										begin += sizeof(uint32_t);
+										// if (begin >= sub_identifiers[i].size())
+										// 	printf("error %d %d\n", begin, sub_identifiers[i].size());
+										// for (uint32_t t = 0, tmp = its2->skiplen; t < 4; t++)
+										// {
+										// 	dec_ids[t + begin] = (tmp & 0xff);
+										// 	tmp >>= 8;
+										// }
+										// begin += sizeof(uint32_t);
+										for (uint32_t t = 0, tmp = its2->length; t < 4; t++)
+										{
+											dec_ids[t + begin] = (tmp & 0xff);
+											// sub_identifiers[i][t + begin] = (tmp & 0xff);
+											tmp >>= 8;
+										}
+										begin += sizeof(uint32_t);
+									}
+								}
+							}
+							// if (tmps != tmpLen)
+							// {
+							// 	printf("!= %d %d\n", tmps, tmpLen);
+							// 	// return;
+							// }
+
+							enc_page_block(dec_ids.data(), enc_len);
+							memcpy(enc_ids, dec_ids.data(), enc_len); // cautious
+																	  // delete[] dec_ids;
+						}
+
+						is_combine = false;
+						// sub_linear_comp[i].emplace_back(temp_sub_info);
+						comp_idx++;
+						temp_key = resort_que[j].sub_info.sub_key;
+						temp_sub_info.sub_key = temp_key;
+						pre_size = 0;
+						temp_vec.clear();
+						j--;
+					}
+				}
+				if (temp_vec.size() > 0)
+				{
+					comp_idx++;
+				}
+			}
 		}
 
 		printf("cluster 6\n");
 	}
-#if CACHE_SIZE < 500000
-	for (auto &val : full_index)
-	{
-		add_sum += val.len;
-	}
-	for (int i = 0; i < SUBINDEX_NUM; i++)
-	{
-		for (int j = 0; j < sub_linear_comp[i].size(); j++)
-		{
-			add_sum += sub_linear_comp[i][j].length;
-		}
-	}
-	for (int t = 0; t < SUBINDEX_NUM; t++)
-	{
-		for (auto &val : clr[t])
-		{
-			add_sum += val.begin_idx;
-		}
-	}
-	printf("add %d\n", add_sum);
-#endif
+	// printf("clr test%d \n", test_clrs);
+	// printf("add sum %d\n", add_sum);
+	// for (int i = 0; i < 4; i++)
+	// {
+	// 	for (int j = 0; j < sub_linear_comp[i].size(); j++)
+	// 	{
+	// 		add_sum += sub_linear_comp[i][j].begin;
+	// 	}
+	// 	for (int j = 0; j < sub_identifiers[i].size(); j++)
+	// 	{
+	// 		add_sum += sub_identifiers[i][j];
+	// 	}
+	// }
+	// printf("add %d\n", add_sum);
+	// full_index2 = full_index;
+
+	// for (int i = 0; i < SUBINDEX_NUM;i++){
+	// 	printf("sub i %d", i);
+		
+	// 		printf(" %d", ids_len[i][6]);
+	// 		printf(" %d", ids_len[i][7]);
+	// 	for (int t = 0; t < 6;t++){
+	// 		printf(" %d", ids_len[i][t]);
+	// 	}
+	// 	printf("\n");}
+	// for (int i = 0; i < SUBINDEX_NUM;i++){
+	// 	printf("sub i %d", i);
+		
+	// 		printf(" %d", ids_total[i][6]);
+	// 		printf(" %d", ids_total[i][7]);
+	// 	for (int t = 0; t < 6;t++){
+	// 		printf(" %d", ids_total[i][t]);
+	// 	}
+	// 	printf("\n");}
 	printf("subsize:%d\n", sub_map_size);
-	printf("resort_que size %d\n", resort_que.size());
 };
 void containers::init_sub_maps(){
 	// int index[4] = {0};
@@ -3425,7 +3299,7 @@ void containers::init_sub_maps(){
 void ecall_find_one(void *dataptr, uint32_t *res, uint32_t *res_len, uint32_t pre_len, uint64_t hammdist)
 {
 	cont.successful_num = 0;
-	cont.changeHammingDist(hammdist, 0);
+	cont.changeHammingDist(hammdist);
 
 	EcallCrypto *cryptoObj = new EcallCrypto(CIPHER_TYPE, HASH_TYPE);
 	EVP_MD_CTX *mdCtx = EVP_MD_CTX_new();
@@ -3440,7 +3314,7 @@ void ecall_find_one(void *dataptr, uint32_t *res, uint32_t *res_len, uint32_t pr
 
 	printf("nums%d\n", (uint64_t *)dataE[0]);
 	uint64_t *data = reinterpret_cast<uint64_t *>(dataE);
-	std::vector<uint32_t> res_set = cont.find_sim(data, 0, 0);
+	std::vector<uint32_t> res_set = cont.find_sim(data, 0);
 	uint8_t *res_old = reinterpret_cast<uint8_t *>(res);
 	for (auto &it : res_set)
 	{
@@ -3453,12 +3327,12 @@ void ecall_find_one(void *dataptr, uint32_t *res, uint32_t *res_len, uint32_t pr
 	printf("Successfully found  photos! successful_num=%d.\n", res_set.size());
 	// printf("%d",sign_data.size());
 }
-void ecall_find_batch(void *dataptr, uint32_t *res, uint32_t len, uint32_t len_res, uint64_t hammdist, int client_id)
+void ecall_find_batch(void *dataptr, uint32_t *res, uint32_t len, uint32_t len_res, uint64_t hammdist)
 {
 	cont.successful_num = 0;
 	candi_num = 0;
 
-	cont.changeHammingDist(hammdist, client_id);
+	cont.changeHammingDist(hammdist);
 
 	EcallCrypto *cryptoObj = new EcallCrypto(CIPHER_TYPE, HASH_TYPE);
 	EVP_MD_CTX *mdCtx = EVP_MD_CTX_new();
@@ -3475,8 +3349,8 @@ void ecall_find_batch(void *dataptr, uint32_t *res, uint32_t len, uint32_t len_r
 	Query_batch_t query;
 	query.sendData = res;
 	*(query.sendData) = len;
-	query.index = query.sendData + 1;
-	query.dataBuffer = query.sendData + 1 * (len + 1);
+	query.index = query.sendData + sizeof(uint32_t);
+	query.dataBuffer = query.sendData + sizeof(uint32_t) * (len + 1);
 	uint64_t *data = reinterpret_cast<uint64_t *>(dataE);
 	uint64_t temp2[2];
 	printf("query len=%d\n", len);
@@ -3484,7 +3358,7 @@ void ecall_find_batch(void *dataptr, uint32_t *res, uint32_t len, uint32_t len_r
 	{
 		temp2[0] = data[2 * i];
 		temp2[1] = data[2 * i + 1];
-		vector<uint32_t> res_set = cont.find_sim(temp2, 0, client_id);
+		vector<uint32_t> res_set = cont.find_sim(temp2, 0);
 		query.index[i] = res_set.size();
 		// printf("res_set.size()=%d\n",res_set.size());
 		for (auto &it : res_set)
@@ -3511,7 +3385,6 @@ void ecall_find_batch(void *dataptr, uint32_t *res, uint32_t len, uint32_t len_r
 	for (int t = 0; t < 6; t++)
 		bd_time[t] /= 1e6;
 	printf("cal-cer one %d, bitmask %d, stash %d, cluster %d\n", bd_time[0], bd_time[1], bd_time[2], bd_time[3]);
-	delete cryptoObj;
 }
 
 // move the visited node to the tail of the list
@@ -3606,7 +3479,7 @@ void find_sim_linear(vector<pair<uint64_t, uint64_t>> test_pool, vector<uint32_t
 			cmp_hamm[0] = query.first ^ (val.fullkey[0]);
 			cmp_hamm[1] = query.second ^ (val.fullkey[1]);
 			count = bitset<64>(cmp_hamm[0]).count() + bitset<64>(cmp_hamm[1]).count();
-			if (count <= cont.hammdist[0])
+			if (count <= cont.hammdist)
 			{
 				cont.successful_num++;
 				if (val.target != target_pool[i])
@@ -3790,10 +3663,10 @@ void containers::change_sub_map(int sub_i){
 // 		printf("sub_hammdist[%d]=%d\n", i, cont.sub_hammdist[i]);
 // 	}
 // }
-void ecall_change_para(uint32_t dataSet, uint32_t hamm, uint32_t clr_size, uint32_t clr_dist, uint32_t comb_num, uint32_t aggre_size, int kmodes, int steps, int is_var, float ktime)
+void ecall_change_para(uint32_t dataSet, uint32_t hamm, uint32_t clr_size, uint32_t clr_dist, uint32_t comb_num, uint32_t aggre_size,int kmodes,int steps,int is_var,int ktime)
 {
 	cont.aggre_size = aggre_size;
-	cont.hammdist[0] = hamm;
+	cont.hammdist = hamm;
 	cont.min_clr_size = clr_size;
 	cont.max_dist = clr_dist;
 	cont.MIN_INC_NUM = comb_num;
@@ -3802,18 +3675,18 @@ void ecall_change_para(uint32_t dataSet, uint32_t hamm, uint32_t clr_size, uint3
 	cont.steps = steps;
 	cont.is_var = is_var;
 	cont.ktimes = ktime;
-	printf("kkkkk kmodes %d steps %d is_var %d ktime %lf\n", cont.kmod, steps, is_var, ktime);
+	printf("kkkkk kmodes %d steps %d is_var %d ktime %d\n", cont.kmod, steps, is_var, ktime);
 
-	printf("hamm:%d clr_size:%d clr_dist:%d comb_num:%d  aggre %d\n", cont.hammdist[0], cont.min_clr_size, cont.max_dist, cont.MIN_INC_NUM, cont.aggre_size);
+	printf("hamm:%d clr_size:%d clr_dist:%d comb_num:%d  aggre %d\n", cont.hammdist, cont.min_clr_size, cont.max_dist, cont.MIN_INC_NUM, cont.aggre_size);
 
-	// for (int i = 0; i < SUBINDEX_NUM; i++)
+	for (int i = 0; i < SUBINDEX_NUM; i++)
 	{
-		cont.sub_hammdist[0] = (uint64_t)floor(1.0 * hamm / SUBINDEX_NUM);
+		cont.sub_hammdist[i] = (uint64_t)floor(1.0 * hamm / SUBINDEX_NUM);
 	}
-	// for (int i = 0; i < 4; i++)
+	for (int i = 0; i < 4; i++)
 	{
 		// sub_hammdist[i] = temp[i];
-		printf("sub_hammdist[%d]=%d\n", 0, cont.sub_hammdist[0]);
+		printf("sub_hammdist[%d]=%d\n", i, cont.sub_hammdist[i]);
 	}
 }
 void ecall_init_id_index(void *id_index, uint32_t idx)
@@ -3849,102 +3722,54 @@ void containers::dec_page_block(uint8_t *data, uint32_t len, uint8_t *dec_data)
 	EVP_CIPHER_CTX_free(cipherCtx_);
 }
 
-vector<uint32_t> containers::get_rand_keys(int i, int k, vector<uint32_t> &old_keys)
+vector<uint32_t> containers::get_rand_keys(int i, int k)
 {
 	vector<uint32_t> keys;
-	uint32_t ridx;
-	while (1)
+	for (int t = 0; t < 2 && keys.size() < k; t++)
 	{
-		sgx_read_rand(reinterpret_cast<unsigned char *>(&ridx), sizeof(int));
-		ridx = ridx % full_key_sorted.size();
-
-		for (auto &val : old_keys)
+		for (int index = 0; index < sub_index_liner[i].size(); index++)
 		{
-			auto dist = popcount(val ^ full_key_sorted[ridx].target);
-			if (dist <= max_dist)
-				goto loop1;
+			if (keys.size() < k)
+			{
+				keys.push_back(sub_index_liner[i][index].sub_key);
+			}
+			else
+			{
+				uint32_t j = 0;
+				sgx_read_rand(reinterpret_cast<unsigned char *>(&j), sizeof(int));
+				if (j < k)
+				{
+					keys[j] = sub_index_liner[i][index].sub_key; // data[index];
+				}
+			}
+			for (; index + 1 < sub_index_liner[i].size() && sub_index_liner[i][index + 1].sub_key == sub_index_liner[i][index].sub_key; index++)
+				;
 		}
-		// for (auto &val : keys)
-		// {
-		// 	auto dist = popcount(val ^ sub_index_liner[i][ridx].sub_key);
-		// 	if (dist < max_dist)
-		// 		goto loop1;
-		// }
-		if (keys.size() < k)
-		{
-			keys.push_back(full_key_sorted[ridx].target);
-		}
-		else
-		{
-			break;
-		}
-	loop1:
-		ridx = 0;
+		set<uint32_t> tmp_set(keys.begin(), keys.end());
+		keys.clear();
+		keys = vector<uint32_t>(tmp_set.begin(), tmp_set.end());
 	}
-	// for (int t = 0; t < 6 && keys.size() < k; t++)
-	// {
-	// 	for (int index = 0; index < sub_index_liner[i].size(); index++)
-	// 	{
-	// 		for (auto &val : old_keys)
-	// 		{
-	// 			auto dist = popcount(val ^ sub_index_liner[i][index].sub_key);
-	// 			if (dist <= max_dist)
-	// 				goto loop;
-	// 		}
-	// 		for (auto &val : keys)
-	// 		{
-	// 			auto dist = popcount(val ^ sub_index_liner[i][index].sub_key);
-	// 			if (dist < max_dist)
-	// 				goto loop;
-	// 		}
-	// 		if (keys.size() < k)
-	// 		{
-	// 			keys.push_back(sub_index_liner[i][index].sub_key);
-	// 		}
-	// 		else
-	// 		{
-	// 			uint32_t j = 0;
-	// 			sgx_read_rand(reinterpret_cast<unsigned char *>(&j), sizeof(int));
-	// 			if (j < k)
-	// 			{
-	// 				keys[j] = sub_index_liner[i][index].sub_key; // data[index];
-	// 			}
-	// 		}
-	// 	loop:
-	// 		for (; index + 1 < sub_index_liner[i].size() && sub_index_liner[i][index + 1].sub_key == sub_index_liner[i][index].sub_key; index++)
-	// 			;
-	// 	}
-	// 	set<uint32_t> tmp_set(keys.begin(), keys.end());
-	// 	keys.clear();
-	// 	keys = vector<uint32_t>(tmp_set.begin(), tmp_set.end());
-	// }
 	return std::move(keys);
 }
 vector<cluster_node> containers::kmodes(int i)
 {
-	int k = (uint32_t)(1.0 * cont.full_key_sorted.size() / 2000), tmp_cluster, dis, tmp_dist; //((1.0 * sub_linear_comp[i].size() / 1000 > 1.0 * 1000) ? 1000 : (1.0 * sub_linear_comp[i].size() / 1000))
+	int k = (uint32_t)(1.0 * cont.sub_index_liner[0].size() / 2000), tmp_cluster, dis, tmp_dist; //((1.0 * sub_linear_comp[i].size() / 1000 > 1.0 * 1000) ? 1000 : (1.0 * sub_linear_comp[i].size() / 1000))
 	k = (uint32_t)(1.0 * k / (SUBINDEX_NUM - 3));
 	if ((uint32_t)k < 300)
 		k = 300;
-	k = 200; // cautious 200 for img,70 for sift
+	k =200; // cautious 200 for img,70 for sift
 
-	k = 50; // 800;//
+	k =50;// 800;//
 
-	k = kmod;
-	// k = 400;
-	vector<uint32_t> keys, keys2;
+	k=kmod;
+	vector<uint32_t> keys;
 	vector<pair<uint32_t, uint32_t>> tmp_clrs; // nums keys
 	uint64_t sum = 0, sum0 = INT64_MAX, stash_nums = 0;
 	EcallCMSketch cmsketch(100000);
 	uint8_t out[16];
-	vector<vector<uint32_t>> value_nums;
-
-	vector<vector<uint32_t>> clusterk; // store k cluster
-	clusterk.resize(k);
 	// printf("keys size %d \n", keys.size());
 
-	keys = get_rand_keys(i, k, keys);
-	keys2 = keys;
+	keys = get_rand_keys(i, k);
 	// for (int t = 0; t < 2 && keys.size() < k; t++)
 	// {
 	// 	for (int index = 0; index < sub_index_liner[i].size(); index++)
@@ -3971,37 +3796,27 @@ vector<cluster_node> containers::kmodes(int i)
 	// }
 
 	k = keys.size();
-	value_nums.resize(k + 1);
-	value_nums[0].resize(k + 1);
-	for (int t = 1; t < k + 1; t++)
-	{
-		value_nums[t].resize(32);
-	}
-	printf("1\n");
+
 	// for (int t = 0; t < k; t++)
 	// {
 	// 	printf("keys %d \n", keys[t]);
 	// }
 	// printf("keys size %d \n", keys.size());
-
-	// only catagory to under max_dist to the cluster, update the cluster without larger than max_dist
 	int times = 0;
-	while (times < 80) // 15
+	while (times < 10)
 	{
-		// printf("times %d\n", times);
-		// printf("2\n");
 		times++;
 		tmp_clrs.clear();
 		tmp_clrs.resize(k);
 		stash_nums = 0;
-		for (int j = 0; j < full_key_sorted.size(); j++)
+		for (int j = 0; j < sub_index_liner[i].size(); j++)
 		{
 			tmp_dist = INT16_MAX;
 			tmp_cluster = -1;
 			for (int t = 0; t < k; t++)
 			{
-				dis = bitset<32>(full_key_sorted[j].target ^ keys[t]).count();
-				if (dis < tmp_dist) // tmp_dist
+				dis = bitset<32>(sub_index_liner[i][j].sub_key ^ keys[t]).count();
+				if (dis < tmp_dist)
 				{
 					tmp_cluster = t;
 					tmp_dist = dis;
@@ -4012,33 +3827,14 @@ vector<cluster_node> containers::kmodes(int i)
 				}
 			}
 			{
-				// sum += tmp_dist;
-				// if (tmp_cluster != -1)
+				sum += tmp_dist;
+				MurmurHash3_x86_128(&sub_index_liner[i][j].sub_key, sizeof(uint32_t), 0, out);
+				cmsketch.Update(out, 16, 1);
+				int num_tmp = cmsketch.Estimate(out, 16);
+				if (num_tmp > tmp_clrs[tmp_cluster].first)
 				{
-					if (tmp_dist <= max_dist)
-					{
-						sum += tmp_dist;
-						MurmurHash3_x86_128(&full_key_sorted[j].target, sizeof(uint32_t), 0, out);
-						cmsketch.Update(out, 16, 1);
-						int num_tmp = cmsketch.Estimate(out, 16);
-						if (num_tmp > tmp_clrs[tmp_cluster].first)
-						{
-							tmp_clrs[tmp_cluster].first = num_tmp;
-							tmp_clrs[tmp_cluster].second = full_key_sorted[j].target;
-						}
-					}
-
-					if (tmp_dist <= max_dist)
-					{
-						value_nums[0][tmp_cluster + 1]++;
-						for (int t = 0; t < 32; t++)
-						{
-							if ((full_key_sorted[j].target >> t) & 1)
-								value_nums[tmp_cluster + 1][t]++;
-						}
-
-						// clusterk[tmp_cluster].push_back(sub_index_liner[i][j].sub_key);
-					}
+					tmp_clrs[tmp_cluster].first = num_tmp;
+					tmp_clrs[tmp_cluster].second = sub_index_liner[i][j].sub_key;
 				}
 			}
 
@@ -4047,115 +3843,33 @@ vector<cluster_node> containers::kmodes(int i)
 				stash_nums++;
 			}
 		}
-		// loop end
 		// printf("sum %d \n", sum);
-		// if (sum >= sum0) //&& stash_nums < ceil((double)sub_index_liner[i].size() / 2)
-		// {
-		// 	cmsketch.ClearUp();
-		// 	sum = 0;
-		// 	// {printf("sum %d cluster times %d\n",sum0,times);break;}
-		// 	break;
-		// 	continue;
-		// }
-		// else
+		if (sum >= sum0) //&& stash_nums < ceil((double)sub_index_liner[i].size() / 2)
 		{
-			int out = 1;
-			// right k-modes
+			cmsketch.ClearUp();
+			sum = 0;
+			break;
+			continue;
+		}
+		else
+		{
 			for (int t = 0; t < k; t++)
 			{
-				int size = value_nums[0][t + 1], tmp_key = 0;
-				for (int j = 0; j < 32; j++)
-				{
-					if (value_nums[t + 1][j] > (size >> 1))
-					{
-						tmp_key |= (1 << j);
-					}
-				}
-				if (keys[t] != tmp_key)
-					out = 0;
-				keys[t] = tmp_key;
-			}
-
-			// old k-modes
-			// for (int t = 0; t < k; t++)
-			// {
-			// 	if (keys[t] != tmp_clrs[t].second)
-			// 		out = 0;
-			// 	keys[t] = tmp_clrs[t].second;
-			// }
-			// if (out && sum == sum0)
-			// {
-			// 	printf("sum %d cluster times %d\n", sum0, times);
-			// 	break;
-			// }
-
-			// // k-medoids
-			// for (int t = 0; t < k; t++)
-			// {
-			// 	int min_dist = INT32_MAX, tmpid = -1;
-			// 	for (int j = 0; j < clusterk[t].size(); j++)
-			// 	{
-			// 		int tmp_dist = 0;
-			// 		for (int m = 0; m < clusterk[t].size(); m++)
-			// 		{
-			// 			tmp_dist += bitset<32>(clusterk[t][j] ^ clusterk[t][m]).count();
-			// 		}
-			// 		if (tmp_dist < min_dist)
-			// 		{
-			// 			min_dist = tmp_dist;
-			// 			tmpid = j;
-			// 			// keys[t]=clusterk[t][j];
-			// 		}
-			// 	}
-			// 	if (tmpid != -1)
-			// 	{
-			// 		out = 0;
-			// 		keys[t] = clusterk[t][tmpid];
-			// 	}
-			// }
-
-			if (out && sum == sum0)
-			{
-				printf("sum %d cluster times %d\n", sum0, times);
-				break;
+				keys[t] = tmp_clrs[t].second;
 			}
 			sum0 = sum;
 
-			// for (int i = 0, sub = 0; i < k; i++)
-			// {
-			// 	if (value_nums[0][i + 1] > 10000 || value_nums[0][i + 1] < 1000)
-			// 	{
-			// 		keys.erase(keys.begin() + i - sub);
-			// 		sub++;
-			// 	}
-			// }
-			if (is_var && stash_nums >= ceil((double)full_key_sorted.size() * ktimes)) // size / 2
+			if (is_var&&stash_nums >= ceil((double)sub_index_liner[i].size() / ktimes))// size/2
 			{
-				auto tmp = get_rand_keys(i, 2 * k, keys);
+				auto tmp = get_rand_keys(i, k);
 				unordered_set<uint32_t> tmp_set(keys.begin(), keys.end());
 				for (auto &val : tmp)
 				{
-					if (tmp_set.find(val) == tmp_set.end() && keys.size() < k + steps) //+20
+					if (tmp_set.find(val) == tmp_set.end() && keys.size() < k + steps)//+20
 						keys.push_back(val);
 				}
 			}
-			for (int t = 0; t < k + 1; t++)
-			{
-				value_nums[t].clear();
-			}
 			k = keys.size();
-
-			clusterk.resize(k);
-			for (int t = 0; t < k; t++)
-			{
-				clusterk[t].clear();
-			}
-			value_nums.resize(k + 1);
-			value_nums[0].resize(k + 1);
-			for (int t = 1; t < k + 1; t++)
-			{
-				value_nums[t].resize(32);
-			}
 		}
 		sum = 0;
 		cmsketch.ClearUp();
@@ -4190,25 +3904,20 @@ void containers::lru_ids_visit(uint64_t key, ids_node *node)
 		return;
 	if (node == lru_cache.index_tail)
 		return;
-
-	// lru_mtx.lock();
 	node->next->pre = node->pre;
 	node->pre->next = node->next;
 	node->pre = lru_cache.index_tail;
 	node->next = nullptr;
 	lru_cache.index_tail->next = node;
 	lru_cache.index_tail = node;
-	// lru_mtx.unlock();
 };
-
 uint8_t *containers::lru_ids_add(uint64_t key, uint32_t sub_i, sub_info_comp comp)
 {
 	ids_node *remove_node = nullptr;
-	uint32_t val_size = (comp.length & MASK_LEN) * INT_SIZE, tmp_size = (comp.length <= 0 || val_size < 2048 ? 2048 : val_size);
 
 	if (lru_cache.len >= lru_cache.capacity)
 	{
-		resize_times++;
+
 		remove_node = lru_cache.index_head->next;
 		remove_node->pre->next = remove_node->next;
 		remove_node->next->pre = lru_cache.index_head;
@@ -4221,49 +3930,26 @@ uint8_t *containers::lru_ids_add(uint64_t key, uint32_t sub_i, sub_info_comp com
 	{
 		lru_cache.len++;
 	}
+
 	ids_node *node = nullptr;
 	if (remove_node == nullptr)
 	{
 		node = &exist_ids[lru_cache.len - 1];
-#if CACHE_SIZE < 500000
-		max_size += 2048;
-		node->ids.resize(2048); // / 2 ceil((double)max_id_page / 2)
-#endif
-		if (node->ids.size() < PAGE_SIZE_B)
-			node->ids.resize(PAGE_SIZE_B);
+		node->ids.resize(ceil((double)max_id_page / 2));
 	}
 	else
 		node = remove_node;
 
 	node->key = key;
-	if (comp.length > 0 && ((comp.length & MASK_LEN) * INT_SIZE) > node->ids.size())
+	if ((comp.length & MASK_LEN) > node->ids.size())
 	{
-		max_size = max_size - node->ids.size() + (comp.length & MASK_LEN) * INT_SIZE;
-
-		resize_size += ((comp.length & MASK_LEN) * INT_SIZE - node->ids.size()) / 4;
+		resize_size += ((comp.length & MASK_LEN) - node->ids.size()) / 4;
 		vector<uint8_t> tmp;
 		node->ids.swap(tmp);
-		node->ids.resize((comp.length & MASK_LEN) * INT_SIZE); // vector.swap ?? for add-similar-keys
+		node->ids.resize(comp.length & MASK_LEN); // vector.swap ?? for add-similar-keys
+		resize_times++;
 	}
-	else if (tmp_size < (node->ids.size() >> 1))
-	{
-		max_size = max_size - node->ids.size() + tmp_size;
-		node->ids.resize(tmp_size);
-	}
-
-	if (comp.length > 0)
-	{
-		dec_page_block(id_point[sub_i] + comp.skiplen, comp.length * sizeof(uint32_t), node->ids.data());
-	}
-	else
-	{
-		dec_page_block(id_point[sub_i] + comp.skiplen, PAGE_SIZE_B, node->ids.data());
-	}
-
-	if (max_size > max_val)
-	{
-		max_val = max_size;
-	}
+	dec_page_block(id_point[sub_i] + comp.skiplen, comp.length & MASK_LEN, node->ids.data());
 
 	data_cache[key] = node;
 
@@ -4271,176 +3957,26 @@ uint8_t *containers::lru_ids_add(uint64_t key, uint32_t sub_i, sub_info_comp com
 	node->pre = lru_cache.index_tail;
 	node->next = nullptr;
 	lru_cache.index_tail = node;
-	// lru_mtx.unlock();
 	return node->ids.data();
 }
 
-// uint8_t *lru_ids_add1(uint64_t key, uint32_t sub_i, sub_info_comp comp)
-// {
-// 	uint32_t val_size = (comp.length & MASK_LEN) * INT_SIZE, tmp_size = ((comp.length <= 0 || val_size < 2048) ? 2048 : val_size);
-// 	ids_node *remove_node = nullptr;
-
-// 	// if (comp.length > 0 && ((comp.length & MASK_LEN) * INT_SIZE) > 2048)
-// 	// {
-// 	// 	max_ids.resize(comp.length * sizeof(uint32_t));
-// 	// 	dec_page_block(id_point[sub_i] + comp.skiplen, comp.length * sizeof(uint32_t), max_ids.data());
-// 	// 	return max_ids.data();
-// 	// }
-// 	if (lru_cache.len >= lru_cache.capacity)
-// 	{
-// 		resize_times++;
-// 		remove_node = lru_cache.index_head->next;
-// 		remove_node->pre->next = remove_node->next;
-// 		remove_node->next->pre = lru_cache.index_head;
-
-// 		data_cache.erase(remove_node->key);
-// 		remove_node->pre = nullptr;
-// 		remove_node->next = nullptr;
-
-// 		// while (lru_cache.remain_size < tmp_size)
-// 		// {
-// 		// 	remove_node->ids.clear();
-// 		// 	remove_node = lru_cache.index_head->next;
-// 		// 	remove_node->pre->next = remove_node->next;
-// 		// 	remove_node->next->pre = lru_cache.index_head;
-
-// 		// 	data_cache.erase(remove_node->key);
-// 		// 	remove_node->pre = nullptr;
-// 		// 	remove_node->next = nullptr;
-// 		// }
-// 	}
-// 	else
-// 	{
-// 		lru_cache.len++;
-// 	}
-
-// 	// if (lru_cache.remain_size < tmp_size)
-// 	// {
-// 	// 	printf("cache size is not enough! maxlen %d maxsize %d tmp%d\n", lru_cache.len, lru_cache.remain_size, tmp_size);
-// 	// 	// exit(-1);
-// 	// }
-// 	// else
-// 	// 	lru_cache.remain_size -= tmp_size;
-// 	ids_node *node = nullptr;
-// 	if (remove_node == nullptr)
-// 	{
-// 		node = &exist_ids[lru_cache.len - 1];
-// #if CACHE_SIZE < 500000
-// 		if (node->ids.size() < 2048)
-// 		{
-// 			max_size -= node->ids.size();
-// 			max_size += 2048;
-// 			if (lru_cache.remain_size < 2048)
-// 			{
-// 				printf("cache size is not enough! maxlen %d maxsize %d tmp%d\n", lru_cache.len, lru_cache.remain_size, tmp_size);
-// 				// exit(-1);
-// 			}
-// 			lru_cache.remain_size += node->ids.size();
-// 			lru_cache.remain_size -= 2048;
-// 		}
-
-// 		node->ids.resize(2048); // / 2 ceil((double)max_id_page / 2)
-// #endif
-// 		if (node->ids.size() < PAGE_SIZE_B)
-// 		{
-// 			node->ids.resize(PAGE_SIZE_B);
-// 			max_size += PAGE_SIZE_B;
-// 		}
-// 	}
-// 	// else
-// 	// {
-// 	// 	vector<uint8_t> tmp(2048);
-// 	// 	node = remove_node;
-// 	// 	node->ids.swap(tmp);
-// 	// }
-
-// 	node->key = key;
-// 	if (comp.length > 0 && ((comp.length & MASK_LEN) * INT_SIZE) > node->ids.size())
-// 	{
-// 		resize_size += ((comp.length & MASK_LEN) * INT_SIZE - node->ids.size()) / 4;
-// 		vector<uint8_t> tmp;
-
-// 		max_size = max_size - node->ids.size() + (comp.length & MASK_LEN) * INT_SIZE;
-// 		lru_cache.remain_size += node->ids.size();
-// 		if (lru_cache.remain_size < (comp.length & MASK_LEN) * INT_SIZE)
-// 		{
-// 			printf("cache size is not enough! maxlen %d maxsize %d tmp%d\n", lru_cache.len, lru_cache.remain_size, tmp_size);
-// 			// exit(-1);
-// 		}
-// 		lru_cache.remain_size -= (comp.length & MASK_LEN) * INT_SIZE;
-
-// 		node->ids.swap(tmp);
-
-// 		node->ids.resize((comp.length & MASK_LEN) * INT_SIZE); // vector.swap ?? for add-similar-keys
-// 	}
-// 	// else if ((comp.length & MASK_LEN) * INT_SIZE > 2048 && (comp.length & MASK_LEN) * INT_SIZE < node->ids.size() >> 2)
-// 	// {
-// 	// 	node->ids.resize((comp.length & MASK_LEN) * INT_SIZE);
-// 	// }
-// 	// if(comp.length<=0)
-// 	if (comp.length > 0)
-// 	{
-// 		dec_page_block(id_point[sub_i] + comp.skiplen, comp.length * sizeof(uint32_t), node->ids.data());
-// 	}
-// 	else
-// 	{
-// 		dec_page_block(id_point[sub_i] + comp.skiplen, PAGE_SIZE_B, node->ids.data());
-// 	}
-
-// 	if (max_size > max_val)
-// 	{
-// 		max_val = max_size;
-// 	}
-// 	data_cache[key] = node;
-
-// 	lru_cache.index_tail->next = node;
-// 	node->pre = lru_cache.index_tail;
-// 	node->next = nullptr;
-// 	lru_cache.index_tail = node;
-// 	// lru_mtx.unlock();
-// 	return node->ids.data();
-// }
-
 void containers::init_ids_cache()
 {
-	printf("max id page--- %d\n", max_id_page);
-#if CACHE_SIZE >= 500000
-	uint32_t total_cache_item = 0;
-	for (int i = 0; i < SUBINDEX_NUM; i++)
-	{
-		total_cache_item += sub_linear_comp[i].size();
-	}
-	lru_cache.capacity = total_cache_item;
-#endif
-	printf("cap %d\n", lru_cache.capacity);
 	exist_ids = new ids_node[lru_cache.capacity];
 	uint32_t len = (uint32_t)(1.0 * lru_cache.capacity / SUBINDEX_NUM), index = 0;
 	for (int i = 0; i < SUBINDEX_NUM; i++)
 	{
-#if CACHE_SIZE >= 500000
-		len = sub_linear_comp[i].size();
-#endif
-#if CACHE_SIZE < 500000
-		for (int k = 0; k < 5; k++)
-#endif
+		for (int j = 0; j < len; j++)
 		{
-			index = 0;
-			for (int j = 0; j < len; j++)
-			{
-				// sgx_read_rand(reinterpret_cast<unsigned char *>(&index), sizeof(int));
-				auto node = sub_linear_comp[i][index % sub_linear_comp[i].size()];
-				uint64_t key = ((uint64_t)i << 32) | node.sub_key;
-				if (data_cache.find(key) != data_cache.end())
-				{
-					index++;
-					continue;
-				}
-				lru_ids_add(key, i, node);
-				index++;
-			}
+			sgx_read_rand(reinterpret_cast<unsigned char *>(&index), sizeof(int));
+			auto node = sub_linear_comp[i][index % sub_linear_comp[i].size()];
+			uint64_t key = ((uint64_t)i << 32) | node.skiplen;
+			if (data_cache.find(key) != data_cache.end())
+				continue;
+			lru_ids_add(key, i, node);
 		}
 	}
-	printf("ids_cache len%d cap%d each_size %d\n", lru_cache.len, lru_cache.capacity, sizeof(ids_node));
+	printf("ids_cache len%d cap%d\n", lru_cache.len, lru_cache.capacity);
 };
 
 void encall_find_knn(void *dataptr, uint32_t *res, uint32_t len, uint32_t len_res, uint64_t hammdist)
@@ -4473,7 +4009,7 @@ void encall_find_knn(void *dataptr, uint32_t *res, uint32_t len, uint32_t len_re
 		temp2[1] = data[2 * i + 1];
 		auto res_set = cont.find_knn(temp2, hammdist);
 		query.index[i] = res_set.size(); // write success num of query i to res
-										 // printf("res_set.size()=%d max _dist %d\n", res_set.size(), res_set[res_set.size() - 1].first);
+										 // printf("res_set.size()=%d\n",res_set.size());
 
 		// for (auto &it : res_set)
 		// {
@@ -4481,14 +4017,132 @@ void encall_find_knn(void *dataptr, uint32_t *res, uint32_t len, uint32_t len_re
 		// 	query.dataBuffer++; // write targets of query i to res
 		// }
 	}
-	times_[0] /= 1e6;
-	times_[1] /= 1e6;
-	times_[2] /= 1e6;
-	printf("fetch times cand %d ,hit times %d", cont.knn_cand_get, cont.knn_hit_cand);
-	printf("times %lld clr %lld stash %lld\n", times_[0], times_[1], times_[2]);
+
 	printf("successful_num=%d\n", cont.successful_num);
 	//*len=res_set.size();
 	cryptoObj->SessionKeyEnc(cipherCtx_, (uint8_t *)res_old, len_res * sizeof(uint32_t), sessionKey_, (uint8_t *)res_old);
 	// printf("Successfully found  photos! successful_num=%d.\n",res_set.size());
 	printf("sign_data_size %d\n", sign_data.size());
+}
+
+
+void containers::init_sub_clrs(){
+	uint32_t tmp_key_bit = sub_keybit;
+	sub_keybit_clrs = ceil((double)tmp_key_bit / sub_index_num_clrs);
+	sub_index_plus_clrs = tmp_key_bit - sub_index_num_clrs * (sub_keybit_clrs - 1);
+
+	printf("m mps keybit %d %d %d\n", sub_index_num_clrs, sub_index_plus_clrs, sub_keybit_clrs);
+	uint32_t sub[sub_clr_m] = {0};
+
+	for (int j = 0; j < sub_index_num_clrs; j++)
+		sub_clr_thres[j]=0;//sub_hammdist[j]+max_dist;
+	// the sum of sub_hammdist is hammdist - sub_index_num + 1
+	for (int j = max_dist-sub_clr_m+1; j > 0;)
+	{
+		for (int i = 0; i < sub_index_num_clrs; i++)
+		{
+			if (j <= 0)
+				break;
+			sub_clr_thres[i]++; // if hammdist=8,sub_hammdist={2,1,1,1}
+			j--;
+		}
+	}
+
+	for (int i = 0; i < SUBINDEX_NUM;i++){
+		for(int t=0;t<clr[i].size()-1;t++){
+			auto& val=clr[i][t];
+			val.end=clr[i][t+1].begin_idx;
+			split(sub, reinterpret_cast<uint8_t *>(&val.subkey), sub_clr_m, sub_index_plus_clrs, sub_keybit_clrs);
+			for (int j = 0; j < sub_clr_m;j++){
+				sub_clrs[i][j][sub[j]].push_back(t);
+			}
+	}}
+
+printf("end 3");
+	init_clrs_mask();
+};
+
+void containers::get_clrs_near(uint32_t sub_i,uint32_t subkey,uint32_t dist,vector<cluster_info>& clrs){}
+
+void containers::init_clrs_mask(){
+	clrs_mask[0].push_back(0);
+	for(int i=1;i<4;i++){
+			int tmp = 0;
+			uint32_t tmpx = 0;
+			int curb = sub_keybit_clrs;
+			int power[100];
+			int s = i, tt = 0;
+			uint32_t bitstr = 0; // the bit-string with s number of 1s
+			for (int i = 0; i < s; i++)
+				power[i] = i;	 // power[i] stores the location of the i'th 1
+			power[s] = curb + 1; // used for stopping criterion (location of (s+1)th 1)
+
+			int bit = s - 1; // bit determines the 1 that should be moving to the left
+
+			while (true)
+			{ // the loop for changing bitstr
+				if (bit != -1)
+				{
+					bitstr ^= (power[bit] == bit) ? (uint32_t)1 << power[bit] : (uint32_t)3 << (power[bit] - 1);
+					power[bit]++;
+					bit--;
+				}
+				else
+				{
+					clrs_mask[i].push_back(bitstr);
+					while (++bit < s && power[bit] == power[bit + 1] - 1)
+					{
+						bitstr ^= (uint32_t)1 << (power[bit] - 1);
+						power[bit] = bit;
+					}
+					if (bit == s)
+						break;
+				}
+			}
+	}
+}
+
+uint32_t containers::get_nearest_min_clr(uint32_t sub_i,uint32_t subkey){
+	uint32_t sub[sub_clr_m] = {0};
+	split(sub, reinterpret_cast<uint8_t *>(&subkey), sub_clr_m, sub_index_plus_clrs, sub_keybit_clrs);
+	uint32_t tmp;
+	cluster_node* clr_;
+	uint32_t tmp_res=-1,tmp_begin=INT32_MAX,tmp_dist=max_dist;
+	uint32_t search_rdius=0;
+	for(int t=0;t<4;t++){
+		if(search_rdius>max_dist)
+			break;
+	for(int j=0;j<sub_clr_m;j++){
+		// for(int i=0;i<sub_clr_thres[j];i++){
+
+			for(auto&val:clrs_mask[t]){
+				tmp=val^sub[j];
+				auto it = sub_clrs[sub_i][j].find(tmp);
+
+				if(it!=sub_clrs[sub_i][j].end()){
+					for(auto&val2:it->second){
+					clr_=&clr[sub_i][val2];
+						// if(clr_->begin_idx<tmp_begin){
+							uint32_t tmp_d=popcount(clr_->subkey^subkey);
+							if(tmp_d<tmp_dist){
+							tmp_res=val2;
+							tmp_begin=clr_->begin_idx;
+							tmp_dist=tmp_d;
+							}else if(tmp_d==tmp_dist&&clr_->begin_idx<tmp_begin){
+								tmp_res=val2;
+								tmp_begin=clr_->begin_idx;
+								tmp_dist=tmp_d;
+							}
+						// }
+					}
+				}
+			}
+		// }
+	}
+	if(tmp_res!=-1)
+		break;
+	search_rdius=t*sub_clr_m+sub_clr_m-1;
+	}
+	// if dist,sub[i]<sub+max
+	return tmp_res;
 }

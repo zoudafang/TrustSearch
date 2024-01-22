@@ -13,6 +13,7 @@
 #include "../../include/crypto.h"
 #include "../../include/util.h"
 #include "../../include/cmsketch.h"
+#include <mutex>
 extern "C"
 {
 #include "libfor/for.h"
@@ -96,11 +97,11 @@ class containers
 public:
 	static uint64_t keybit;
 	uint32_t fullkey_len;
-	uint64_t hammdist;
+	vector<uint64_t> hammdist;
 	uint32_t sub_index_num;
 	uint32_t sub_index_plus;
 	uint32_t sub_keybit;
-	uint64_t sub_hammdist[SUBINDEX_NUM]; // general pigeon principle，每段的汉明距离可能不相等，但总和为hammdist-subindex_num+1
+	vector<uint64_t> sub_hammdist; // general pigeon principle，每段的汉明距离可能不相等，但总和为hammdist-subindex_num+1
 	static uint32_t initialize_size;
 	static uint32_t test_size;
 	static uint32_t sub_map_size;
@@ -121,10 +122,10 @@ public:
 	vector<sub_info_comp> sub_linear_comp[SUBINDEX_NUM]; // 存储并排序，四个特征段的sub_key，仅存储sub_key和begin
 	// vector<uint32_t> sub_identifiers[4];
 	vector<uint8_t> sub_identifiers[SUBINDEX_NUM]; // 用于存储压缩后的identifiers，每个sub_key对应一个sub_identifiers，begin对应起始4byte是length，第二个4byte是压缩参数，再后面是压缩后的identifiers
-	vector<information> full_index;				   // 内部格式[128bit fullkey;32bit len;32*len bit identifiers],identifiers是图片编号，从0-data_len-1
-	vector<uint32_t> C_0_TO_subhammdis[6];		   // 用于与特征段做异或运算的所有数字的容器,C0T[i]仅存储 hamming=i的所有二进制数
-	bloom_filter filters;
-	uint32_t bloom_hash_times, uint_size = sizeof(uint32_t);
+	vector<information> full_index;			   // 内部格式[128bit fullkey;32bit len;32*len bit identifiers],identifiers是图片编号，从0-data_len-1
+	vector<uint32_t> C_0_TO_subhammdis[7];		   // 用于与特征段做异或运算的所有数字的容器,C0T[i]仅存储 hamming=i的所有二进制数
+	bloom_filter *filters;
+	uint32_t bloom_hash_times, INT_SIZE = sizeof(uint32_t);
 
 	vector<pair<uint64_t, uint64_t>> test_pool;
 	vector<pair<uint64_t, uint64_t>> tmp_test_pool; // 接收enclave外部传送进来的测试集数据，数据量为1k或10k
@@ -149,12 +150,12 @@ public:
 	void get_test_pool(); // changed，注意，通过注释其中的sgx_read_rand可以调整查询方式：顺序查询，随机查询
 	void prepare(uint32_t sub_hammdist, vector<uint32_t> &C_0_TO_subhammdis);
 	void initialize();
-	void changeHammingDist(uint64_t hammingdist);
+	void changeHammingDist(uint64_t hammingdist, int client_id);
 	void init_after_recv_data();
 	void opt_full_index(); // 优化full index；多个相同的full-key只会被存储一个
 	void opt_sub_index();  // 优化sub index；包括多个相同sub-key只存储一次；连续的多个孤立sub-key会被combine为1个，减少查询线性表大小
 	void init_sub_maps();  // 往sub map随机插入数据
-	std::vector<uint32_t> find_sim(uint64_t query[], uint32_t test_target);
+	std::vector<uint32_t> find_sim(uint64_t query[], uint32_t test_target, int client_id);
 	void test();
 
 	void lru_index_visit(int sub_i, sub_index_node *node);		// 访问lru的index，将node移到tail
@@ -168,7 +169,6 @@ public:
 
 	uint32_t MIN_INC_NUM = 10;			 // 4.972276
 	uint32_t inc_max_dist[SUBINDEX_NUM]; // = {4, 4, 4, 4};
-	std::unordered_map<uint32_t, int> reached_subkey;
 	vector<sub_info_comp> tmp_visit;
 
 	void *id_index[SUBINDEX_NUM];
@@ -176,9 +176,10 @@ public:
 	EcallCrypto *cryptoObj;
 	// EVP_MD_CTX *mdCtx;
 	// EVP_CIPHER_CTX *cipherCtx_;
-	uint8_t *tmp_ids_block;
 	uint8_t *dataKey_;
-	void gen_candidate(std::unordered_set<uint32_t> &cand, sub_info_comp comp, vector<sub_info_comp> &visited_keys, vector<sub_info_comp> &tmp_keys, uint32_t i, uint32_t subkey, uint32_t dt); // 获得candidate（图片id或者fullindex下标）
+	// void gen_candidate(key_find &find_key, std::unordered_set<uint32_t> &cand, sub_info_comp comp, vector<sub_info_comp> &visited_keys, vector<sub_info_comp> &tmp_keys, uint32_t i, uint32_t subkey, uint32_t dt); // 获得candidate（图片id或者fullindex下标）
+	void gen_candidate(key_find &find_key, std::unordered_set<uint32_t> &cand, sub_info_comp comp, vector<sub_info_comp> &tmp_keys,
+					   uint32_t i, uint32_t subkey, uint32_t dt, uint32_t cache_key); // 获得candidate（图片id或者fullindex下标）
 
 	void enc_page_block(uint8_t *data, uint32_t len);
 	void dec_page_block(uint8_t *data, uint32_t len, uint8_t *dec_data);
@@ -186,7 +187,7 @@ public:
 	vector<cluster_node> clr[SUBINDEX_NUM];
 	vector<uint32_t> clr_nums;
 	uint32_t min_clr_size = 50, max_dist = 5;
-	uint32_t combine_clr_min = 4000; // combine min cluster size
+	uint32_t combine_clr_min = 0; // 1000; // combine min cluster size 4000 TODO:cautious
 	vector<resort_node> resort_que;
 	vector<sub_info_comp> tmp_linear;
 	uint32_t tmp_linear_size = 0;
@@ -205,13 +206,40 @@ public:
 	void init_ids_cache();
 	void init_filters(uint32_t filter_nums);
 
-	vector<uint32_t> get_rand_keys(int i, int k);
+	vector<uint32_t> get_rand_keys(int i, int k, vector<uint32_t> &old_keys);
 	std::vector<std::pair<uint32_t, uint32_t>> find_knn(uint64_t query[], int KNN_NUM);
-	unordered_set<uint32_t> cand_filters;
 	void get_cand_knn(sub_info_comp comp, uint32_t i, uint64_t *query, void *res, uint32_t KNN_NUM);
 	void get_knn_res(uint32_t fullkey_index, uint64_t *query, void *res, uint32_t KNN_NUM);
 	uint32_t max_knn_num = 64;
 	uint32_t *ids_block = new uint32_t[70000];
+
+	uint32_t fetch_nums = 0, hit_nums = 0;
+	const static int sub_clr_m = 3;
+	unordered_map<uint32_t, vector<uint32_t>> sub_clrs[SUBINDEX_NUM][sub_clr_m];
+	void init_sub_clrs();
+	uint32_t sub_clr_thres[sub_clr_m];
+	vector<uint32_t> clrs_mask[4];
+	uint32_t sub_index_num_clrs = sub_clr_m;
+	uint32_t sub_index_plus_clrs;
+	uint32_t sub_keybit_clrs;
+	void init_clrs_mask();
+	uint32_t get_nearest_min_clr(uint32_t sub_i, uint32_t subkey);
+	void get_clrs_near(uint32_t sub_i, uint32_t subkey, uint32_t dist, vector<cluster_info> &clrs);
+
+	int kmod = 50, steps = 20, is_var = 1;
+	float ktimes = 2;
+
+	uint32_t big_uneq = 0;
+	uint32_t knn_cand_get = 0, knn_hit_cand = 0;
+	vector<pair<uint32_t, uint32_t>> idx_2_fullkey;
+	void linear_scan(uint32_t i, uint32_t begin, uint32_t end, uint32_t subkey, uint32_t hammdist,
+					 unordered_set<uint32_t> &candidate, std::unordered_map<uint32_t, int> &reached_subkey);
+
+	std::mutex lru_mtx;
+
+	int test_target = 0, add_sum = 0;
+	uint32_t max_size = 0, max_val = 0;
+	vector<uint8_t> max_ids;
 };
 
 void find_topk(uint64_t query[]);
