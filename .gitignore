@@ -15,4 +15,4 @@ img_code512*.bin
 output.txt
 .history/*
 res*.txt
-
+.vscode/*
