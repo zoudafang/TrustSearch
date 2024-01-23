@@ -8,3 +8,11 @@ App/*_u.h
 Enclave/*_t.c
 Enclave/*_t.h
 *.out
+img_code128*.bin
+.vscode/settings.json
+img_code512*.bin
+.vscode/c_cpp_properties.json
+output.txt
+.history/*
+res*.txt
+

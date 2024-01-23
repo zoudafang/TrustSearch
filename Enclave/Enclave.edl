@@ -42,6 +42,7 @@ enclave {
       
     from "TrustedLibrary/Container.edl" import *;
     from "sgx_tstdc.edl" import *;
+    from "ServerECall/ecallEnc.edl" import *;
 
     /* 
      * ocall_print_string - invokes OCALL to display string buffer inside the enclave.
@@ -50,6 +51,7 @@ enclave {
      */
     untrusted {
         void ocall_print_string([in, string] const char *str);
+        void ocall_get_timeNow([out,count=1]uint64_t* time);
     };
 
 };

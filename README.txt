@@ -58,3 +58,14 @@ If using libsgx-enclave-common or sgxpsw under version 2.4, an initialized varia
 
 sgx_launch_token_t launch_token = {0};
 sgx_create_enclave(ENCLAVE_FILENAME, SGX_DEBUG_FLAG, launch_token, NULL, &global_eid, NULL);
+
+
+-------------------------------------------------
+Initial Client And Server
+-------------------------------------------------
+client: cd Client/build
+        cmake ..
+        make
+        ./client
+server: make 
+        ./app
