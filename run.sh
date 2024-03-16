@@ -21,7 +21,7 @@ file_path="./include/constVar.h"
 # file_path="./include/constVar.h"
 # sed -i "s/const uint32_t SUBINDEX_NUM = [0-9]\+;/const uint32_t SUBINDEX_NUM = $new_value;/" "$file_path"
 
-sed -i "s/const uint32_t SUBINDEX_NUM = [0-9]\+;/const uint32_t SUBINDEX_NUM = 10;/" "$file_path"
+sed -i "s/const uint32_t SUBINDEX_NUM = [0-9]\+;/const uint32_t SUBINDEX_NUM = 6;/" "$file_path"
 sed -i "s/const uint32_t PAGE_SIZE = [0-9]\+;/const uint32_t PAGE_SIZE = 64;/" "$file_path"
 
 echo "data $((t)) SUBINDEX_NUM $((new_value)) " >> res.txt  #subindex $((new_value))
@@ -46,7 +46,7 @@ make clean        #    $cautious for testCS
 make SGX_DEBUG=0
 /opt/intel/sgxsdk/bin/x64/sgx_sign sign -key Enclave/Enclave_private_test.pem -enclave enclave.so -out enclave.signed.so -config Enclave/Enclave.config.xml
 echo "-------------------------"
-./app  -h $((4+4*i)) -s 500000000000 -d 4 -t $((t-1)) -l 3000000 -c 50 -v 25 -b 10 -n 1 -m 0.4 >> res.txt #3 4
+./app  -h $((4+4*i)) -s 500000000000 -d 4 -t $((t-1)) -l 3000000 -c 50 -v 25 -b 10 -n 1 -m 0.4 #>> res.txt #3 4
 make clean
 
 # make clean        #    $cautious for testCS
