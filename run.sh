@@ -4,7 +4,7 @@
 myArray=(4 6 8 10 12)
 
 # echo "+++++++++++dist $((6+2*i))+++++++++++++\n" >> res.txt
-for t in {1..3} # 1-3:img, gist, sift
+for t in {2..3} # 1-3:img, gist, sift
 do
 for j in {1..1}
 do

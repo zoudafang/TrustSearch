@@ -40,7 +40,7 @@ static const uint32_t ENC_BATCH_SIZE_SIFT = 100 * 16;      // <feature>
 
 static const uint32_t PAGE_SIZE = 64; // 4 * 4; // 1024*4
 static const uint32_t PAGE_SIZE_B = PAGE_SIZE * 4;
-static const uint32_t SUBINDEX_NUM = 6; // byte of subkey
+static const uint32_t SUBINDEX_NUM = 10; // byte of subkey
 
 static const uint32_t MASK_INF = 0x80000000; // infrequent keys
 static const uint32_t MASK_SIM = 0x40000000; // similar keys
