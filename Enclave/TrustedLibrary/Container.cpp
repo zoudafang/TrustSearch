@@ -589,15 +589,6 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 				}
 				continue;
 			}
-			// if (min_dist > c_info.dist)
-			// {
-			// 	min_dist = c_info.dist;
-			// 	tmp_min_idx = tmp_clrs.size();
-			// }
-			// if (c_info.dist == 0)
-			// {
-			// 	zero_num++;
-			// }
 			tmp_clrs.push_back(c_info);
 		}
 
@@ -681,16 +672,6 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 						key_find kf{0, 0, 0};
 						// visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
 						gen_candidate(kf, candidate, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
-
-						// begin_ids = its->length;
-						// key_find tmpk{1, 1, 1};
-						// if (begin_ids & MASK_SIM)
-						// {
-						// 	tmp_info = visited_keys.back();
-						// 	visited_keys.pop_back();
-						// 	gen_candidate(tmpk, candidate, tmp_info, visited_keys, visited_keys, i, sub[i], dt, its->sub_key);
-						// 	dt += inc_max_dist[i] //+ 1;
-						// }
 					}
 				}
 			}
@@ -710,18 +691,6 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 			{
 				linear_scan(i, begin_idx, end_idx, sub[i], sub_hammdist[client_id], candidate, reached_subkey);
 
-				// if (!tmp_node.is_combined) //*2的位置错了？//有效，但是无法和combkey=50结合起来//这里的find时间不高&& (end_idx - begin_idx) < existed_subkeys.size() * 2
-				// {combine_clr_min
-				// 	sub_info_comp tmp;
-				// 	for (int k = begin_idx; k < end_idx; k++) // cautious error in it
-				// 	{
-				// 		tmp = sub_linear_comp[i][k];
-				// 		if (popcount(tmp.sub_key ^ sub[i]) <= sub_hammdist[i])
-				// 		{
-				// 			reached_subkey[tmp.sub_key] = 1;
-				// 			visited_keys.push_back({tmp.sub_key, tmp.skiplen, tmp.length});
-				// 		}
-				// 	}
 				val = tmp_clrs.erase(val);
 			}
 			else
@@ -767,30 +736,6 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 		}
 		if (1) // lookup_all_size >= (sub_linear_comp[i].size() >> 1) lookup_all_size >= ceil((double)sub_linear_comp[i].size() / 3)
 		{
-			// search only in nearest cluster
-			// for (auto val = tmp_clrs.begin(); val < tmp_clrs.end();)
-			// {
-			// 	tmp_node = val->node;
-			// 	begin_idx = val->node.begin_idx;
-			// 	end_idx = val->end;
-
-			// 	if (!tmp_node.is_combined && (end_idx - begin_idx) < existed_subkeys.size() * 2) //*2的位置错了？//有效，但是无法和combkey=50结合起来//这里的find时间不高
-			// 	{
-			// 		sub_info_comp tmp;
-			// 		for (int k = begin_idx; k < end_idx; k++) // cautious error in it
-			// 		{
-			// 			tmp = sub_linear_comp[i][k];
-			// 			if (popcount(tmp.sub_key ^ sub[i]) <= sub_hammdist[i])
-			// 			{
-			// 				reached_subkey[tmp.sub_key] = 1;
-			// 				visited_keys.push_back({tmp.sub_key, tmp.skiplen, tmp.length});
-			// 			}
-			// 		}
-			// 		val = tmp_clrs.erase(val);
-			// 	}
-			// 	else
-			// 		val++;
-			// }
 
 			uint32_t max_node = 0;
 			// for (; max_node < tmp_clrs.size(); max_node++)
@@ -847,12 +792,6 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 			uint32_t tmpkey_, max_find_dist;
 			for (int x = 0; x < existed_subkeys.size(); x++)
 			{
-				// if (reached_subkey.find(existed_subkeys[x].subkey) != reached_subkey.end())
-				// {
-				// 	existed_subkeys[x].max_dist = 0;
-				// 	existed_subkeys[x].dist = INT16_MAX;
-				// 	continue;
-				// }
 
 				if (existed_subkeys[x].clr_idx == INT16_MAX)
 					continue;
@@ -960,12 +899,6 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
 						if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
 						{
-							// if (its->sub_key == tmpsub1)
-							// {
-							// 	val.max_dist = 0;
-							// 	// val.dist = INT16_MAX;
-							// 	val.clr_idx = INT16_MAX;
-							// }
 
 							// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
 							gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
@@ -999,13 +932,6 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 					auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
 					if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
 					{
-						// if (its->sub_key == tmpsub1)
-						// {
-						// 	val.max_dist = 0;
-						// 	// val.dist = INT16_MAX;
-						// 	val.clr_idx = INT16_MAX;
-						// }
-						// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
 
 						gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
 					}
@@ -1039,13 +965,6 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
 						if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
 						{
-							// if (its->sub_key == tmpsub1)
-							// {
-							// 	val.max_dist = 0;
-							// 	// val.dist = INT16_MAX;
-							// 	val.clr_idx = INT16_MAX;
-							// }
-							// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
 
 							gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
 						}
@@ -1095,18 +1014,6 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 							// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
 
 							gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
-							// begin_ids = its->length;
-							// if (begin_ids & MASK_SIM)
-							// {
-							// 	tmp_info = visited_keys.back();
-							// 	visited_keys.pop_back();
-							// 	gen_candidate(candidate, tmp_info, visited_keys, tmp_visit, i, sub[i], val.dist);
-							// 	for (int t = 0; t < tmp_visit.size(); t++)
-							// 	{
-							// 		gen_candidate(candidate, tmp_visit[t], visited_keys, tmp_visit, i, sub[i], val.dist + 1);
-							// 	}
-							// 	tmp_visit.clear();
-							// }
 						}
 					}
 
@@ -1227,25 +1134,6 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 	// printf("targste %d\n", tmp_test_target);
 	// printf("%d unequal %d\n", unequal, unequal_n);
 
-	// 测试查询结果的数量级分布
-	// static uint32_t min_num[3] = {0};
-	// if (successful_num - successful_num_pre < 1)
-	// {
-	// 	min_num[0]++;
-	// 	printf("min_num[0]:%llu %llu\n", query[0], query[1]);
-	// }
-	// else if (successful_num - successful_num_pre < 1000)
-	// {
-	// 	min_num[1]++;
-	// 	printf("min_num[1]:%llu %llu\n", query[0], query[1]);
-	// }
-	// else
-	// {
-	// 	min_num[2]++;
-	// 	printf("min_num[2]:%llu %llu\n", query[0], query[1]);
-	// }
-	// printf("min_num[0]:%u min_num[1]:%u min_num[2]:%u\n", min_num[0], min_num[1], min_num[2]);
-	// ocall_get_timeNow(time);
 	end_time = *time;
 	verify_time += end_time - begin_time;
 	// ocall_get_timeNow(total_time_now);
@@ -1814,7 +1702,7 @@ void init_after_send()
 	// printf("lll %d %f\n", (uint32_t)(1.0 * cont.sub_index_liner[0].size() / 2000), (1.0 * cont.sub_index_liner[0].size() / 1.0 * 1000));
 
 	cont.make_clusters();
-	
+
 	uint32_t nums = 0;
 	for (int i = 0; i < SUBINDEX_NUM; i++)
 		nums += cont.sub_linear_comp[i].size();
@@ -2876,7 +2764,6 @@ void ecall_find_batch(void *dataptr, uint32_t *res, uint32_t len, uint32_t len_r
 	printf("cal-cer one %d, bitmask %d, stash %d, cluster %d\n", bd_time[0], bd_time[1], bd_time[2], bd_time[3]);
 	delete cryptoObj;
 }
-
 
 // 线性遍历，测试数据集中的特征值分布情况
 struct ComparePairs

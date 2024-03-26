@@ -27,7 +27,7 @@ static const char CLIENT_CERT[] = "../../key/client/client.crt";
 static const char CLIENT_KEY[] = "../../key/client/client.key";
 static const char CA_CERT[] = "key/ca/ca.crt";              // 注意可执行文件和key文件的相对路径
 static const char CA_CERT_CLIENT[] = "../../key/ca/ca.crt"; // 注意可执行文件和key文件的相对路径
-static const char SERVER_IP[] = "192.168.5.104";
+static const char SERVER_IP[] = "192.168.5.103";        //client和server通信的IP和Port
 static const int SERVER_PORT = 8090;
 static const uint32_t THREAD_STACK_SIZE = 8 * 1024 * 1024;
 
@@ -40,7 +40,7 @@ static const uint32_t ENC_BATCH_SIZE_SIFT = 100 * 16;      // <feature>
 
 static const uint32_t PAGE_SIZE = 64; // 4 * 4; // 1024*4
 static const uint32_t PAGE_SIZE_B = PAGE_SIZE * 4;
-static const uint32_t SUBINDEX_NUM = 10; // byte of subkey
+static const uint32_t SUBINDEX_NUM = 6; // byte of subkey
 
 static const uint32_t MASK_INF = 0x80000000; // infrequent keys
 static const uint32_t MASK_SIM = 0x40000000; // similar keys

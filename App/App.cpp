@@ -336,19 +336,19 @@ int SGX_CDECL main(int argc, char *argv[])
     double costTime = double(endTime - startTime) / CLOCKS_PER_SEC;
     printf("The test took %lf seconds.\n", costTime);
 
-    for (int i = 0; i < 1; i++)
-    {
-        for (int t = 0; t < 3; t++)
-        { // 12+8*t
-            ecall_change_para(global_eid, dataSet, 8 + 4 * t, clr_size, clr_dist, comb_num, aggre_size, kmodes, steps, is_var, ktimes);
-            startTime = clock();
-            test_from_enclave();
-            endTime = clock();
-            costTime = double(endTime - startTime) / CLOCKS_PER_SEC;
-            printf("The test took %lf seconds.\n", costTime);
-        }
-    }
-    // start_server();//启动server
+    // for (int i = 0; i < 1; i++)
+    // {
+    //     for (int t = 0; t < 3; t++)
+    //     { // 12+8*t
+    //         ecall_change_para(global_eid, dataSet, 8 + 4 * t, clr_size, clr_dist, comb_num, aggre_size, kmodes, steps, is_var, ktimes);
+    //         startTime = clock();
+    //         test_from_enclave();
+    //         endTime = clock();
+    //         costTime = double(endTime - startTime) / CLOCKS_PER_SEC;
+    //         printf("The test took %lf seconds.\n", costTime);
+    //     }
+    // }
+    start_server();//启动server
 
     /* Destroy the enclave */
     sgx_destroy_enclave(global_eid);

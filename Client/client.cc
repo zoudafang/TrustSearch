@@ -12,6 +12,7 @@
 #include <sys/time.h>
 #include <ctime>
 #include <chrono>
+#include <random>
 
 // #include "../include/sessionKeyExchange.h"
 using namespace std;
@@ -19,15 +20,15 @@ using namespace std;
 void readData(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &data);
 void read_data_query(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &query, int is_img_code);
 void read_enc_dataset(std::string file_name, int is_query, std::vector<std::pair<uint64_t, uint64_t>> &query);
-void client_query();
 
 int main(int argc, char *argv[])
 {
-    uint32_t query_type = QUERY_BATCH, threshold = 8;
+    uint32_t query_type = QUERY_BATCH, threshold = 8, knn_num = 1;
     int option;
     int invalid = 0, dataSet = 0;
+    int client_num = 1; // the number of clients
     uint32_t test_data_len = 0;
-    const char optString[] = "l:i:t:h:";
+    const char optString[] = "l:i:t:h:k:n:";
 
     while ((option = getopt(argc, argv, optString)) != -1)
     {
@@ -56,6 +57,15 @@ int main(int argc, char *argv[])
         {
             threshold = atoi(optarg);
             break;
+        }
+        case 'k':
+        {
+            knn_num = atoi(optarg);
+            break;
+        }
+        case 'n':
+        {
+            client_num = atoi(optarg);
         }
         break;
         }
@@ -141,61 +151,40 @@ int main(int argc, char *argv[])
 
     read_enc_dataset(query_name, 1, res);
 
-    // // readData("../../query_img_code512.bin", res);
-    // // read_data_query("../../siftM.bin", res, 0);
-    // read_data_query("../../query_img_code512.bin", res, 1);
-    // // read_data_query("../../tmp_test.bin", res, 1);
-
-    // std::chrono::steady_clock::time_point startTime2, endTime2;
-    // std::chrono::duration<double> duration2;
-    // startTime2 = std::chrono::steady_clock::now();
-
-    //-------test query and receive ,batch query------
-    uint32_t query_num = 1000, query_size = sizeof(uint64_t) * query_num * 2;
+    uint32_t query_num = 1, query_size = sizeof(uint64_t) * query_num * 2; // query_num =1000
     uint64_t *encData = new uint64_t[query_num * 2];
+    std::random_device rd;
+    std::mt19937 gen(rd()); // 使用随机设备生成种子
 
-    srand(time(NULL));
+    int res_len = query_num * QUERY_SIZE; // max res length
+    if (threshold >= 24)                  // the result imgs will increase with the hamming distance
+    {
+        res_len = query_num * 12300;
+    }
+    if (threshold > 30)
+    {
+        res_len = query_num * 20000;
+    }
+    if (query_num < 10)
+        res_len = query_num * 100000;
 
-    // uint32_t batch_size = 530, nums = floor(1.0 * test_data_len / batch_size);
-    // uint32_t index1 = 0;
-    // uint32_t end = res.size();
-    // vector<pair<uint64_t, uint64_t>> test_pool;
-    // nums = (nums < 1000 ? nums : 1000);
-    // // if (!is_invalid)
-    // {
-    //     while (1)
-    //     {
-    //         for (int i = 0; i < nums; i++)
-    //         {
-    //             if (test_pool.size() < 1000)
-    //                 test_pool.push_back(res[i]);
-    //             else
-    //                 goto ends;
-    //         }
-    //     }
-    // ends:
-    //     nums++;
-    // }
-    // for (int i = 0; i < 1000; i++)
-    // {
-    //     encData[i * 2] = test_pool[i].first;
-    //     encData[i * 2 + 1] = test_pool[i].second;
-    // }
-
+    srand(gen());
     SendMsgBuffer_t sendMsgBuffer;
-    sendMsgBuffer.sendBuffer = (uint8_t *)malloc(sizeof(NetworkHead_t) + sizeof(uint64_t) * query_num * 2);
+    sendMsgBuffer.sendBuffer = new uint8_t[res_len * sizeof(uint32_t)]; //(uint8_t *)malloc(sizeof(NetworkHead_t) + sizeof(uint64_t) * query_num * 2);
     sendMsgBuffer.dataBuffer = sendMsgBuffer.sendBuffer + sizeof(NetworkHead_t);
     sendMsgBuffer.header = (NetworkHead_t *)sendMsgBuffer.sendBuffer;
     sendMsgBuffer.header->clientID = clientID;
 
     std::chrono::steady_clock::time_point startTime2, endTime2;
-    std::chrono::duration<double> duration2;
+    std::chrono::duration<double> duration2, total_time;
 
     std::chrono::steady_clock::time_point startTimeE, endTimeE, startTimeE2, endTimeE2, startTimeS, endTimeS;
-    std::chrono::duration<double> durationE, durationE2, total_time;
+    std::chrono::duration<double> durationE, durationE2;
     startTimeE = std::chrono::steady_clock::now();
+    vector<double> time_list;
+
     NetworkHead_t *head = new NetworkHead_t();
-    uint32_t size;
+    uint32_t size, total_num, tmp_idx;
     // dataSecureChannel->ReceiveData(serverConnection, (uint8_t *)head, size);
     // if (head->messageType != SERVER_RUN)
     // {
@@ -203,97 +192,132 @@ int main(int argc, char *argv[])
     //     exit(0);
     // }
 
-    for (int h = 0; h < 2; h++)
     {
-        total_time = std::chrono::duration<double>::zero();
-        for (int index = 0; index < res.size(); index++)
-        {
-            if (index < query_num)
-            {
-                encData[index * 2] = res[index].first;
-                encData[index * 2 + 1] = res[index].second;
-            }
-            else
-            {
-                int j = rand() % (index + 1);
-                if (j < query_num)
-                {
-                    encData[j * 2] = res[index].first;
-                    encData[j * 2 + 1] = res[index].second;
-                }
-            }
-            // printf("encData[%d]=%llu\n", i, encData[i]);
-        }
-
-        cryptoObj->SessionKeyEnc(cipherCtx_, (uint8_t *)encData, query_size, sessionKey_, (uint8_t *)encData);
-
-        memcpy(sendMsgBuffer.dataBuffer, encData, query_size);
-
-        startTime2 = std::chrono::steady_clock::now(); // 记录开始时间
-        sendMsgBuffer.header->messageType = QUERY_BATCH;
+        sendMsgBuffer.header->messageType = MULTI_CLIENT;
         sendMsgBuffer.header->dataSize = query_size;
-
-        threshold = 4 + (h) * 4; // >> 1
-        sendMsgBuffer.header->hammdist = threshold;
+        sendMsgBuffer.header->hammdist = client_num;
 
         dataSecureChannel->SendData(serverConnection, sendMsgBuffer.sendBuffer, sizeof(NetworkHead_t) + sendMsgBuffer.header->dataSize);
-
-        int res_len = query_num * QUERY_SIZE;
-        if (threshold > 24) // the result imgs will increase with the hamming distance
-        {
-            res_len = query_num * 6300;
-        }
-        if (threshold > 30)
-        {
-            res_len = query_num * 17000;
-        }
-
-        uint8_t *data2 = new uint8_t[res_len * sizeof(uint32_t)];
-
-        startTimeS = std::chrono::steady_clock::now();
-
-        dataSecureChannel->ReceiveData(serverConnection, data2, dataSize);
-
-        endTimeS = std::chrono::steady_clock::now();
-        durationE = endTimeS - startTimeS; // 计算持续时间
-        printf("send time：%f秒\n", durationE.count());
-        startTimeE2 = std::chrono::steady_clock::now();
-
-        cryptoObj->SessionKeyDec(cipherCtx_, (uint8_t *)data2, dataSize, sessionKey_, (uint8_t *)data2);
-
-        endTimeE2 = std::chrono::steady_clock::now();
-        durationE2 = endTimeE2 - startTimeE2; // 计算持续时间
-        printf("dec time：%f秒\n", durationE2.count());
-
-        Query_batch_t query_batch;
-        query_batch.sendData = (uint32_t *)data2;
-
-        int query_num = query_batch.sendData[0];
-        query_batch.index = query_batch.sendData + sizeof(uint32_t);
-        query_batch.dataBuffer = query_batch.index + query_num * sizeof(uint32_t);
-        printf("query_num=%d \n", query_num);
-        int successful_num = 0;
-        for (int i = 0; i < query_num; i++)
-        {
-            successful_num += query_batch.index[i];
-            for (int j = 0; j < query_batch.index[i]; j++)
-            {
-                // printf("n: %u",query_batch.dataBuffer[i]);
-            }
-        }
-        endTime2 = std::chrono::steady_clock::now(); // 记录结束时间
-        duration2 = endTime2 - startTime2;           // 计算持续时间
-        printf("hamming %d success_num:%d,函数运行时间：%f秒\n", sendMsgBuffer.header->hammdist, successful_num, duration2.count());
-
-        delete[] data2;
     }
+    uint8_t *data2 = new uint8_t[res_len * sizeof(uint32_t)];
+    startTime2 = std::chrono::steady_clock::now(); // 记录开始时间
+    // for (int t = 0; t < 100; t++)
+    // {
+    //     dataSecureChannel->SendData(serverConnection, data2, 40);
+    //     dataSecureChannel->ReceiveData(serverConnection, data2, dataSize);
+    //     clientID += data2[0];
+    // }
+    endTime2 = std::chrono::steady_clock::now(); // 记录结束时间
+    duration2 = endTime2 - startTime2;           // 计算持续时间
+    printf("tatol time %lf client %d\n", duration2.count(), clientID);
+    // exit(0);
 
-    free(sendMsgBuffer.sendBuffer);
+    for (int h = 1; h < 2; h++)
+    {
+        // for (int times = 0; times < 10; times++)
+        {
+            time_list.clear();
+            total_time = std::chrono::duration<double>::zero();
+            total_num = 0;
+            for (int t = 0; t < 1000; t++)
+            {
+                tmp_idx = rand() % res.size();
+                encData[0] = res[tmp_idx % res.size()].first;
+                encData[1] = res[tmp_idx % res.size()].second;
+                tmp_idx += 1;
+                // for (int index = 0; index < res.size(); index++)
+                // {
+                //     if (index < query_num)
+                //     {
+                //         encData[index * 2] = res[index].first;
+                //         encData[index * 2 + 1] = res[index].second;
+                //     }
+                //     else
+                //     {
+                //         int j = rand() % (index + 1);
+                //         if (j < query_num)
+                //         {
+                //             encData[j * 2] = res[index].first;
+                //             encData[j * 2 + 1] = res[index].second;
+                //         }
+                //     }
+                //     // printf("encData[%d]=%llu\n", i, encData[i]);
+                // }
+                cryptoObj->SessionKeyEnc(cipherCtx_, (uint8_t *)encData, query_size, sessionKey_, (uint8_t *)encData);
+                memcpy(sendMsgBuffer.dataBuffer, encData, query_size);
+
+                startTime2 = std::chrono::steady_clock::now(); // 记录开始时间
+                sendMsgBuffer.header->messageType = QUERY_BATCH;
+                sendMsgBuffer.header->dataSize = query_size;
+
+                // threshold = 4 + (h) * 4; // >> 1
+                sendMsgBuffer.header->hammdist = threshold;
+
+                dataSecureChannel->SendData(serverConnection, sendMsgBuffer.sendBuffer, res_len * sizeof(uint32_t));
+
+                // startTime2 = std::chrono::steady_clock::now(); // 记录开始时间
+                // sendMsgBuffer.header->messageType = QUERY_KNN;
+                // sendMsgBuffer.header->dataSize = query_size;
+                // threshold = knn_num;
+                // printf("search knn %d\n", knn_num);
+                // sendMsgBuffer.header->hammdist = threshold;
+                // dataSecureChannel->SendData(serverConnection, sendMsgBuffer.sendBuffer, sizeof(NetworkHead_t) + sendMsgBuffer.header->dataSize);
+
+                startTimeS = std::chrono::steady_clock::now();
+
+                dataSecureChannel->ReceiveData(serverConnection, data2, dataSize);
+
+                endTimeS = std::chrono::steady_clock::now();
+                durationE = endTimeS - startTimeS; // 计算持续时间
+                // printf("send time：%f秒\n", durationE.count());
+                startTimeE2 = std::chrono::steady_clock::now();
+
+                cryptoObj->SessionKeyDec(cipherCtx_, (uint8_t *)data2, dataSize, sessionKey_, (uint8_t *)data2);
+
+                endTimeE2 = std::chrono::steady_clock::now();
+                durationE2 = endTimeE2 - startTimeE2; // 计算持续时间
+                // printf("dec time：%f秒\n", durationE2.count());
+
+                Query_batch_t query_batch;
+                query_batch.sendData = (uint32_t *)data2;
+
+                int query_num = query_batch.sendData[0];
+                query_batch.index = query_batch.sendData + 1;
+                query_batch.dataBuffer = query_batch.index + query_num * 1;
+                // printf("query_num=%d \n", query_num);
+                int successful_num = 0;
+                for (int i = 0; i < query_num; i++)
+                {
+                    successful_num += query_batch.index[i];
+                    for (int j = 0; j < query_batch.index[i]; j++)
+                    {
+                        // printf("n: %u",query_batch.dataBuffer[i]);
+                    }
+                }
+                total_num += successful_num;                 // successful_num;
+                endTime2 = std::chrono::steady_clock::now(); // 记录结束时间
+                duration2 = endTime2 - startTime2;           // 计算持续时间
+                total_time += duration2;
+                printf("hamming %d success_num:%d,函数运行时间：%f秒\n", sendMsgBuffer.header->hammdist, successful_num, duration2.count());
+                // printf("%f \n", duration2.count());
+                time_list.push_back(duration2.count());
+            }
+            sort(time_list.begin(), time_list.end());
+            printf("hamming %d  total_num:%d tail_latercy %lf total_timr %lf\n", sendMsgBuffer.header->hammdist, total_num, time_list[(int)((double)time_list.size() * 0.95)], total_time.count());
+        }
+    }
+    delete[] sendMsgBuffer.sendBuffer;
+    delete[] data2;
+
     if (1)
     {
         head->messageType = KILL_SERVER;
         dataSecureChannel->SendData(serverConnection, (uint8_t *)head, sizeof(NetworkHead_t));
     }
+    // sleep(5);
+
+    // dataSecureChannel->ReceiveData(serverConnection, data, dataSize); // exit
+
     //     //sessionKeyObj->GeneratingSecret(sessionKey, serverConnection, clientID);
 
     // dataSenderObj = new DataSender(dataSecureChannel);
@@ -315,10 +339,10 @@ int main(int argc, char *argv[])
     //     //         delete chunker2SenderMQ;
     //     //         thList.clear();
 
-    //     // EVP_MD_CTX_free(mdCtx);
-    //     // delete cryptoObj;
-    //     // delete sessionKeyObj;
-    //     delete dataSecureChannel;
+    EVP_MD_CTX_free(mdCtx);
+    delete cryptoObj;
+    // delete sessionKeyObj;
+    delete dataSecureChannel;
 }
 void readData(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &data)
 {
@@ -428,7 +452,7 @@ void read_enc_dataset(std::string file_name, int is_query, std::vector<std::pair
         read_data.clear();
     }
     input.close();
-    printf("size of query: %d\n", query.size());
+    // printf("size of query: %d\n", query.size());
     EVP_MD_CTX_free(mdCtx);
     EVP_CIPHER_CTX_free(cipherCtx_);
 }
