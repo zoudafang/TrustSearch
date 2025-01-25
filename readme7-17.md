@@ -43,3 +43,5 @@ lru：
 1. bloom filter的parameters.false_positive_probability影响filter的大小和查询精确度，在当前lru下，0.3测试是最佳的
 2. 倾斜分区似乎用处不大，数据分布相对均匀，就算使用随机划分分区的方法，查询效率变化不大
 3. 查询效率对内存敏感，比如information或sub_information增加一个uint32字段，则查询效率会相应降低
+
+

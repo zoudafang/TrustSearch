@@ -13,20 +13,20 @@
 #include <ctime>
 #include <chrono>
 #include <random>
-#include "./onnxruntime-linux-x64-1.17.1/include/onnxruntime_cxx_api.h"
+// #include "./onnxruntime-linux-x64-1.17.1/include/onnxruntime_cxx_api.h"
 #include <vector>
 #include <algorithm>
 
 // #include "../include/sessionKeyExchange.h"
 using namespace std;
 
-void readData(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &data);
+void readData(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &data, int is_img512);
 void read_data_query(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &query, int is_img_code);
 void read_enc_dataset(std::string file_name, int is_query, std::vector<std::pair<uint64_t, uint64_t>> &query);
 
 int main(int argc, char *argv[])
 {
-    /*uint32_t query_type = QUERY_BATCH, threshold = 8, knn_num = 1;
+    uint32_t query_type = QUERY_BATCH, threshold = 8, knn_num = 1;
     int option;
     int invalid = 0, dataSet = 0;
     int client_num = 1; // the number of clients
@@ -95,6 +95,11 @@ int main(int argc, char *argv[])
         // read_data("siftM.bin", res, targets, 1);
         break;
     }
+    case 3:
+    {
+        query_name = "../../../dataset/sift1B_query.bin";
+        break;
+    }
     default:
         break;
     }
@@ -152,24 +157,22 @@ int main(int argc, char *argv[])
     std::vector<std::pair<uint64_t, uint64_t>> res;
     // std::vector<uint8_t> read_data;
 
-    read_enc_dataset(query_name, 1, res);
-
+    if (dataSet != 3)
+        read_enc_dataset(query_name, 1, res);
+    else
+    {
+        readData(query_name, res, 0);
+    }
     uint32_t query_num = 1, query_size = sizeof(uint64_t) * query_num * 2; // query_num =1000
     uint64_t *encData = new uint64_t[query_num * 2];
     std::random_device rd;
     std::mt19937 gen(rd()); // 使用随机设备生成种子
 
     int res_len = query_num * QUERY_SIZE; // max res length
-    if (threshold >= 24)                  // the result imgs will increase with the hamming distance
-    {
-        res_len = query_num * 12300;
-    }
-    if (threshold > 30)
-    {
-        res_len = query_num * 20000;
-    }
     if (query_num < 10)
-        res_len = query_num * 100000;
+    {
+        res_len = QUERY_SIZE * 10;
+    }
 
     srand(gen());
     SendMsgBuffer_t sendMsgBuffer;
@@ -187,7 +190,7 @@ int main(int argc, char *argv[])
     vector<double> time_list;
 
     NetworkHead_t *head = new NetworkHead_t();
-    uint32_t size, total_num, tmp_idx;
+    uint32_t size, total_num, tmp_idx, dec_size;
     // dataSecureChannel->ReceiveData(serverConnection, (uint8_t *)head, size);
     // if (head->messageType != SERVER_RUN)
     // {
@@ -214,6 +217,7 @@ int main(int argc, char *argv[])
     duration2 = endTime2 - startTime2;           // 计算持续时间
     printf("tatol time %lf client %d\n", duration2.count(), clientID);
     // exit(0);
+    std::uniform_int_distribution<> distrib(0, res.size() - 1);
 
     for (int h = 1; h < 2; h++)
     {
@@ -224,7 +228,7 @@ int main(int argc, char *argv[])
             total_num = 0;
             for (int t = 0; t < 1000; t++)
             {
-                tmp_idx = rand() % res.size();
+                tmp_idx = distrib(gen);
                 encData[0] = res[tmp_idx % res.size()].first;
                 encData[1] = res[tmp_idx % res.size()].second;
                 tmp_idx += 1;
@@ -275,14 +279,20 @@ int main(int argc, char *argv[])
                 // printf("send time：%f秒\n", durationE.count());
                 startTimeE2 = std::chrono::steady_clock::now();
 
-                cryptoObj->SessionKeyDec(cipherCtx_, (uint8_t *)data2, dataSize, sessionKey_, (uint8_t *)data2);
+                Query_batch_t query_batch;
+                query_batch.sendData = (uint32_t *)data2;
+                dec_size = (query_num + 1) * sizeof(uint32_t);
+                cryptoObj->SessionKeyDec(cipherCtx_, (uint8_t *)data2, dec_size, sessionKey_, (uint8_t *)data2);
+                dataSize = 0;
+                for (int t = 0; t < query_batch.sendData[0]; t++)
+                    dataSize += query_batch.sendData[t];
+                dataSize *= sizeof(uint32_t);
+
+                cryptoObj->SessionKeyDec(cipherCtx_, (uint8_t *)(data2 + dec_size), dataSize, sessionKey_, (uint8_t *)(data2 + dec_size));
 
                 endTimeE2 = std::chrono::steady_clock::now();
                 durationE2 = endTimeE2 - startTimeE2; // 计算持续时间
                 // printf("dec time：%f秒\n", durationE2.count());
-
-                Query_batch_t query_batch;
-                query_batch.sendData = (uint32_t *)data2;
 
                 int query_num = query_batch.sendData[0];
                 query_batch.index = query_batch.sendData + 1;
@@ -317,7 +327,7 @@ int main(int argc, char *argv[])
         head->messageType = KILL_SERVER;
         dataSecureChannel->SendData(serverConnection, (uint8_t *)head, sizeof(NetworkHead_t));
     }
-    // sleep(5);
+    sleep(15);
 
     // dataSecureChannel->ReceiveData(serverConnection, data, dataSize); // exit
 
@@ -346,75 +356,78 @@ int main(int argc, char *argv[])
     delete cryptoObj;
     // delete sessionKeyObj;
     delete dataSecureChannel;
-    */
-    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
-    const char* img_model_path = "Image_Encoder_2.onnx";
-    Ort::SessionOptions session_options;
-    Ort::Session img_session(env, img_model_path, session_options);
 
-    // 准备输入数据（这里假设输入数据是一个NumPy数组）
-    std::srand(1);
-    std::vector<float> input_data(1 * 3 * 224 * 224);
-    std::generate(input_data.begin(), input_data.end(), [](){ return static_cast<float>(rand()) / RAND_MAX; });
-    std::cout << "input vector: ";
-    for(int x=0;x<10;x++)
-    {
-        printf("%lf, ",input_data[x]);
-    }
-    printf("\ninput_data`s num is %d\n",input_data.size());
+    // Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+    // const char *img_model_path = "Image_Encoder_2.onnx";
+    // Ort::SessionOptions session_options;
+    // Ort::Session img_session(env, img_model_path, session_options);
 
-    // 创建输入Tensor
-    std::vector<int64_t> input_shape{1, 3, 224, 224};
-    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-    Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_data.size() * sizeof(float), input_shape.data(), input_shape.size());
-    
-    const char* input_names[] = {"onnx::Cast_0"};
-    const char* output_names[] = {"2255"};
-    std::vector<Ort::Value> output_tensors = img_session.Run(Ort::RunOptions{}, input_names, &input_tensor, 1, output_names, 1);
-
-    Ort::Value output_tensor = std::move(output_tensors[0]);
-    // 获取输出张量的类型和形状信息
-    auto tensor_info = output_tensor.GetTensorTypeAndShapeInfo();
-    std::vector<int64_t> tensor_shape = tensor_info.GetShape();
-
-    // 确保输出张量的形状是一个 1x128 的向量
-    if (tensor_shape.size() != 2 || tensor_shape[0] != 1 || tensor_shape[1] != 128) {
-    std::cerr << "Error: Output tensor shape is not as expected (1x128)." << std::endl;
-    return -1; // 或者采取其他错误处理措施
-    }
-
-    // 获取输出张量的数据指针
-    float* output_data = output_tensor.GetTensorMutableData<float>();
-
-    // 读取输出向量中的数据
-    std::cout << "Output vector: ";
-    for (int i = 0; i < tensor_shape[1]; ++i) {
-        float value = output_data[i];
-        std::cout << value << " ";
-    }
-    std::cout << std::endl;
-    printf("output_data`s num is %d\n",tensor_shape[1]);
-
-    // std::vector<float> output_vector(output_data, output_data + tensor_shape[1]);
-    // float sum_sq = 0.0f;
-    // for (float val : output_vector) {
-    //     sum_sq += val * val;
+    // // 准备输入数据（这里假设输入数据是一个NumPy数组）
+    // std::srand(1);
+    // std::vector<float> input_data(1 * 3 * 224 * 224);
+    // std::generate(input_data.begin(), input_data.end(), []()
+    //               { return static_cast<float>(rand()) / RAND_MAX; });
+    // std::cout << "input vector: ";
+    // for (int x = 0; x < 10; x++)
+    // {
+    //     printf("%lf, ", input_data[x]);
     // }
-    // float norm = std::sqrt(sum_sq);
-    // for (float& val : output_vector) {
-    //     val /= norm;
+    // printf("\ninput_data`s num is %d\n", input_data.size());
+
+    // // 创建输入Tensor
+    // std::vector<int64_t> input_shape{1, 3, 224, 224};
+    // Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+    // Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_data.size() * sizeof(float), input_shape.data(), input_shape.size());
+
+    // const char *input_names[] = {"onnx::Cast_0"};
+    // const char *output_names[] = {"2255"};
+    // std::vector<Ort::Value> output_tensors = img_session.Run(Ort::RunOptions{}, input_names, &input_tensor, 1, output_names, 1);
+
+    // Ort::Value output_tensor = std::move(output_tensors[0]);
+    // // 获取输出张量的类型和形状信息
+    // auto tensor_info = output_tensor.GetTensorTypeAndShapeInfo();
+    // std::vector<int64_t> tensor_shape = tensor_info.GetShape();
+
+    // // 确保输出张量的形状是一个 1x128 的向量
+    // if (tensor_shape.size() != 2 || tensor_shape[0] != 1 || tensor_shape[1] != 128)
+    // {
+    //     std::cerr << "Error: Output tensor shape is not as expected (1x128)." << std::endl;
+    //     return -1; // 或者采取其他错误处理措施
     // }
 
-    // // 输出归一化后的向量
-    // std::cout << "Normalized output vector: ";
-    // for (float val : output_vector) {
-    //     std::cout << val << " ";
+    // // 获取输出张量的数据指针
+    // float *output_data = output_tensor.GetTensorMutableData<float>();
+
+    // // 读取输出向量中的数据
+    // std::cout << "Output vector: ";
+    // for (int i = 0; i < tensor_shape[1]; ++i)
+    // {
+    //     float value = output_data[i];
+    //     std::cout << value << " ";
     // }
     // std::cout << std::endl;
+    // printf("output_data`s num is %d\n", tensor_shape[1]);
+
+    // // std::vector<float> output_vector(output_data, output_data + tensor_shape[1]);
+    // // float sum_sq = 0.0f;
+    // // for (float val : output_vector) {
+    // //     sum_sq += val * val;
+    // // }
+    // // float norm = std::sqrt(sum_sq);
+    // // for (float& val : output_vector) {
+    // //     val /= norm;
+    // // }
+
+    // // // 输出归一化后的向量
+    // // std::cout << "Normalized output vector: ";
+    // // for (float val : output_vector) {
+    // //     std::cout << val << " ";
+    // // }
+    // // std::cout << std::endl;
 
     return 0;
 }
-void readData(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &data)
+void readData(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> &data, int is_img512)
 {
     std::ifstream input(file_name, std::ios::binary);
     uint64_t high, low;
@@ -422,8 +435,11 @@ void readData(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>> 
     while (input.read(reinterpret_cast<char *>(&high), sizeof(high)) && input.read(reinterpret_cast<char *>(&low), sizeof(low)))
     {
         data.emplace_back(high, low);
-        input.read(reinterpret_cast<char *>(&target), sizeof(target)); // read the target of sign_data
-        input.read(reinterpret_cast<char *>(&target), sizeof(target));
+        if (is_img512)
+        {
+            input.read(reinterpret_cast<char *>(&target), sizeof(target)); // read the target of sign_data
+            input.read(reinterpret_cast<char *>(&target), sizeof(target));
+        }
     }
     input.close();
 }

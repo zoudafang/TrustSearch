@@ -14,10 +14,13 @@
 #include "../../include/util.h"
 #include "../../include/cmsketch.h"
 #include <mutex>
-extern "C"
-{
-#include "libfor/for.h"
-}
+#include <atomic>
+#include </opt/intel/sgxsdk/include/sgx_thread.h>
+#include <immintrin.h>
+// #include "sgx_intrin.h"
+#include <limits>
+#include "../../include/AtomicArray.h"
+#include <inttypes.h>
 using namespace std;
 
 #define LOGGER(x)
@@ -58,8 +61,8 @@ struct information
 struct info_uncomp
 {
 	uint32_t identify; // 图片编号
+	uint32_t target;   // 仅用于测试查询效率，最后可以把target字段取消掉
 	uint64_t fullkey[2];
-	uint32_t target; // 仅用于测试查询效率，最后可以把target字段取消掉
 };
 struct sub_information
 {
@@ -70,8 +73,8 @@ struct sub_information
 struct resort_node
 {
 	uint32_t cluster_id;
-	uint32_t my_id;
-	sub_information sub_info;
+	// uint32_t my_id;
+	// sub_information sub_info;
 };
 
 // hot data stored in sub_map
@@ -92,6 +95,19 @@ typedef struct LRU_node
 	sub_index_node *index_tail;
 } lru_node;
 
+class containers;
+struct query_t
+{
+	containers *tmp_conts;
+	uint32_t type;
+	uint32_t sub_i;
+	uint32_t thd_idx;
+};
+struct cont_t
+{
+	sgx_thread_cond_t cont;
+	sgx_thread_mutex_t mutex;
+};
 class containers
 {
 public:
@@ -101,11 +117,11 @@ public:
 	uint32_t sub_index_num;
 	uint32_t sub_index_plus;
 	uint32_t sub_keybit;
-	vector<uint64_t> sub_hammdist; // general pigeon principle，每段的汉明距离可能不相等，但总和为hammdist-subindex_num+1
+	vector<std::array<int, SUBINDEX_NUM>> sub_hammdist; // general pigeon principle，每段的汉明距离可能不相等，但总和为hammdist-subindex_num+1
 	static uint32_t initialize_size;
 	static uint32_t test_size;
 	static uint32_t sub_map_size;
-	int successful_num = 0;
+	int successful_num = 0, false_num = 0, hit_succ_num = 0;
 	// unordered_set<uint32_t> candidate;
 	//  unordered_map<uint32_t,information> full_index;
 	unordered_map<uint32_t, sub_index_node *> sub_index[4]; // map，存储hot data
@@ -122,9 +138,10 @@ public:
 	vector<sub_info_comp> sub_linear_comp[SUBINDEX_NUM]; // 存储并排序，四个特征段的sub_key，仅存储sub_key和begin
 	// vector<uint32_t> sub_identifiers[4];
 	vector<uint8_t> sub_identifiers[SUBINDEX_NUM]; // 用于存储压缩后的identifiers，每个sub_key对应一个sub_identifiers，begin对应起始4byte是length，第二个4byte是压缩参数，再后面是压缩后的identifiers
-	vector<information> full_index;			   // 内部格式[128bit fullkey;32bit len;32*len bit identifiers],identifiers是图片编号，从0-data_len-1
+	vector<information> full_index;				   // 内部格式[128bit fullkey;32bit len;32*len bit identifiers],identifiers是图片编号，从0-data_len-1
 	vector<uint32_t> C_0_TO_subhammdis[7];		   // 用于与特征段做异或运算的所有数字的容器,C0T[i]仅存储 hamming=i的所有二进制数
 	bloom_filter *filters;
+	bloom_filter *sub_filters[SUBINDEX_NUM];
 	uint32_t bloom_hash_times, INT_SIZE = sizeof(uint32_t);
 
 	vector<pair<uint64_t, uint64_t>> test_pool;
@@ -141,6 +158,15 @@ public:
 	unordered_map<uint32_t, vector<uint32_t>> tmp_index[4];
 	sub_index_node *new_data_head[4]; // 新insert的数据形成链表，head记录头部
 	// unordered_map<uint32_t,uint32_t> insert_data[4]; //记录插入的新数据的位置
+
+	bitset<DATA_LEN> candi_set;
+	bitset<DATA_LEN> candi_set2;
+	bitset<DATA_LEN> candi_first_set;
+	vector<uint32_t> cand_step1;
+	vector<uint32_t> candidate2;
+	vector<uint32_t> candidateAdd;
+	bitset<DATA_LEN> candi_set_step2;
+	vector<Record_Info_Refine> record_info;
 
 	containers();
 	void random_128(uint64_t *temp_key);
@@ -178,13 +204,21 @@ public:
 	// EVP_CIPHER_CTX *cipherCtx_;
 	uint8_t *dataKey_;
 	// void gen_candidate(key_find &find_key, std::unordered_set<uint32_t> &cand, sub_info_comp comp, vector<sub_info_comp> &visited_keys, vector<sub_info_comp> &tmp_keys, uint32_t i, uint32_t subkey, uint32_t dt); // 获得candidate（图片id或者fullindex下标）
-	void gen_candidate(key_find &find_key, std::unordered_set<uint32_t> &cand, sub_info_comp comp, vector<sub_info_comp> &tmp_keys,
+	void gen_candidate(key_find &find_key, std::vector<uint32_t> &cand, sub_info_comp comp, vector<sub_info_comp> &tmp_keys,
 					   uint32_t i, uint32_t subkey, uint32_t dt, uint32_t cache_key); // 获得candidate（图片id或者fullindex下标）
-
+	void linear_scan(uint32_t client, uint32_t i, uint32_t begin, uint32_t end, uint32_t subkey, uint32_t hamm,
+					 vector<uint32_t> &candidate, std::unordered_map<uint32_t, int> &reached_subkey);
+	template <size_t T>
+	void linear_scan_first(uint32_t i, uint32_t begin, uint32_t end, uint32_t subkey, uint32_t sub_hammdist,
+						   unordered_set<uint32_t> &cand_first, std::unordered_map<uint32_t, int> &reached_subkey, bitset<T> &cand_set, std::vector<uint32_t> &cand);
+	void gen_cand_first(key_find &find_key, std::unordered_set<uint32_t> &cand_first, sub_info_comp comp, vector<sub_info_comp> &tmp_keys,
+						uint32_t i, uint32_t subkey, uint32_t dt, uint32_t cache_key, std::vector<uint32_t> &cand); // 获得candidate（图片id或者fullindex下标）
 	void enc_page_block(uint8_t *data, uint32_t len);
 	void dec_page_block(uint8_t *data, uint32_t len, uint8_t *dec_data);
 
 	vector<cluster_node> clr[SUBINDEX_NUM];
+	vector<uint32_t> full_ids;
+
 	vector<uint32_t> clr_nums;
 	uint32_t min_clr_size = 50, max_dist = 5;
 	uint32_t combine_clr_min = 0; // 1000; // combine min cluster size 4000 TODO:cautious
@@ -192,7 +226,7 @@ public:
 	vector<sub_info_comp> tmp_linear;
 	uint32_t tmp_linear_size = 0;
 	void make_clusters();
-	vector<cluster_node> kmodes(int i);
+	vector<cluster_node> kmodes(int i, vector<uint32_t> &clr_keys);
 	uint32_t dataSet; // 0: img512, 1: sift1M, 2: gist1M
 
 	unordered_map<uint64_t, ids_node *> data_cache; // uint32 key; uint32 i
@@ -205,6 +239,7 @@ public:
 	ids_node *exist_ids;
 	void init_ids_cache();
 	void init_filters(uint32_t filter_nums);
+	bitset<10000> filter_query;
 
 	vector<uint32_t> get_rand_keys(int i, int k, vector<uint32_t> &old_keys);
 	std::vector<std::pair<uint32_t, uint32_t>> find_knn(uint64_t query[], int KNN_NUM);
@@ -232,14 +267,29 @@ public:
 	uint32_t big_uneq = 0;
 	uint32_t knn_cand_get = 0, knn_hit_cand = 0;
 	vector<pair<uint32_t, uint32_t>> idx_2_fullkey;
-	void linear_scan(uint32_t i, uint32_t begin, uint32_t end, uint32_t subkey, uint32_t hammdist,
-					 unordered_set<uint32_t> &candidate, std::unordered_map<uint32_t, int> &reached_subkey);
 
 	std::mutex lru_mtx;
 
 	int test_target = 0, add_sum = 0;
 	uint32_t max_size = 0, max_val = 0;
 	vector<uint8_t> max_ids;
+
+	std::vector<AtomicArray> cluster_value_nums;
+	vector<vector<uint32_t>> clusterk; // store some candkey that dis(cand, clr)==1 in cluster t
+	vector<cont_t> wait_clusterk;
+
+	AtomicArray clrs_size;
+	atomic<uint32_t> cluster_sum, stash_nums;
+	vector<uint32_t> keys;
+	vector<uint32_t> clr_indexes;
+	void *Keys_clustering(uint32_t thd_idx);
+	static void *func_forward(void *arg);
+	static const int CLR_THD_NUM = 4;
+	cont_t wait_res_end = {SGX_THREAD_COND_INITIALIZER, SGX_THREAD_MUTEX_INITIALIZER};
+	cont_t wait_loop = {SGX_THREAD_COND_INITIALIZER, SGX_THREAD_MUTEX_INITIALIZER};
+	cont_t wait_query_end[4];
+	int clr_finish_count, clr_thread_dies = 0;
+	pthread_t clr_thread[CLR_THD_NUM];
 };
 
 void find_topk(uint64_t query[]);

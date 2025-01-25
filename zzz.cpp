@@ -484,12 +484,6 @@ pair<uint32_t, uint32_t> find_nearest_element_avx2(const std::vector<uint32_t> &
 }
 void containers::get_test_pool()
 {
-	std::vector<int> numbers = {590,591,707,513,720,569,710,161,106,192,140,659,95,919,886,873,918,696,702,92,662,532,903,91,331,69,511,592,751,83,82,821,107,540,556,826,81,889,523,522,689,699,563,887,566,570,721,103,898,900,712,533,330,663,705,516,719,723,902,99,971,701,698,656,752,822,557,517,559,558,823,852,479,480,518,561,529,708,519,969,520,571,560,521,96,482,98,649,481,483,97,648,709,711,713 };
-	for(auto&num:numbers)
-	{
-	filter_query.set(num);
-		// std::cout << "filter_query.set(" << num << ");" << std::endl;
-	}
 
 	// 从测试集获取test pool数据
 	uint32_t index1 = 5556;
@@ -590,32 +584,37 @@ void containers::get_test_pool()
 }
 int zero_num = 0;
 
+int dataset_size = 0, feature_size = 0;
 static int cand_nums[10] = {0};
 static int cand_nums_set[10] = {0};
-static int cand_set_nums = 0, mix = 0, mix2 = 0;
-static int thres_cand1 = 0, thres_cand2 = 50090000; // cautious
+static int cand_set_nums = 0, cand_set0_nums, cand_get0_times, cand_set2_nums, mix = 0, mix2 = 0;
+static int thres_cand1 = 50090000, thres_cand2 = 50090000; // cautious
 int step2_flag;
 int times_gen = 0, combs = 0, combs_hit = 0, find_clrs_num = 0;
 uint32_t client_id = 0;
 static uint32_t query_times = 0;
 static int hittt = 0;
 static int misss = 0;
-int dataset_size = 0, feature_size = 0, opt_refine = 0;
+int fetch_flag, fetch_num, exist_num;
 std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_target, int client_id) // ocall_get_timeNow
 {
+	fetch_flag = 0;
+	fetch_num = 0;
+	exist_num = 0;
+
 	cand_set_nums = 0;
+	cand_set0_nums = 0;
+	cand_set2_nums = 0;
+	cand_get0_times = 0;
 	query_times++;
 	uint32_t binary_times = 1;
-	// candi_num=0;
+	int add_dist = sub_hammdist[client_id][((hammdist[client_id] - SUBINDEX_NUM + 1) % SUBINDEX_NUM)] + 1;
 
 	int verifty_step = 0;
 	uint64_t *total_time_now = new uint64_t[1];
 	long long total_begin_time = 0, total_end_time = 0;
 	ocall_get_timeNow(total_time_now);
 	total_begin_time = *total_time_now;
-
-	uint64_t fetch_cand_step1,fetch_cand_times = 0,reduce_total_num=0;
-	uint64_t time_begin, time_step1, time_step2;
 
 	vector<uint32_t> candidate;
 	std::unordered_map<uint32_t, int> reached_subkey;
@@ -674,7 +673,10 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 	uint32_t tmp_dist = 0, tmp_count, tmp_min_idx, min_dist;
 	uint32_t begin_idx, end_idx, lookup_all_size = 0, lookup_radius;
 
-	ocall_get_timeNow(&time_begin);
+        uint64_t timeP, timeF, timeF2;
+
+	step2_flag = 1;
+	ocall_get_timeNow(&timeP);
 	for (int i = 0; i < SUBINDEX_NUM; i++)
 	{
 		if (sub_hammdist[client_id][i] < 0)
@@ -819,7 +821,11 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 		// for optimal to reduce the candidate; cautious
 		int sed_size = sub_hammdist[client_id][i] - 1; // sub_hammdist[client_id][i]-1;
 		if (i == (hammdist[client_id] - SUBINDEX_NUM + 1) % SUBINDEX_NUM)
+		{
+			// continue; // TODO:
+			;
 			sed_size = sub_hammdist[client_id][i];
+		}
 		/*
 				for (auto val = tmp_clrs.begin(); val < tmp_clrs.end();)
 				{
@@ -860,7 +866,7 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 					}
 				}
 			}
-		}fetch_cand_step1+=existed_subkeys.size();
+		}
 		// printf("linear size %d exist size %d clr_num%d \n", reached_subkey.size(), existed_subkeys.size(),tmp_clrs.size());
 		reached_subkey.clear();
 		// get_times(0, 1);
@@ -1159,8 +1165,8 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
 						if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
 						{
-							if ((i != (hammdist[client_id] - SUBINDEX_NUM + 1) % SUBINDEX_NUM))
-								binary_times++;
+							// if (val.dist == add_dist)
+							binary_times++;
 							if (its->sub_key == tmpsub1)
 								val.max_dist = 0;
 							// visited_subkeys.insert(its->sub_key); // why must ==? cautious
@@ -1184,7 +1190,6 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 			}
 		}
 
-	search_end:
 		// get_times(0, 2);
 		ocall_get_timeNow(time);
 		end_time = *time;
@@ -1217,19 +1222,20 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 	int x = candidate.size();
 	verifty_step = 0;
 
-	// candidate2.clear();
-	// candidate2 = candidate;
-	// candi_set2.reset();
-	// candi_set2 = candi_set;
+	candidate2.clear();
+	candidate2 = candidate;
+	candi_set2.reset();
+	candi_set2 = candi_set;
 
-	// if (1) // x < thres_cand1//(1.0 * candidate.size() / binary_times) < (2 * dataset_size / feature_size * 1.0)
-	// {
-	// 	opt_refine++; //! filter_query.test(query_times)
+	// if (x < thres_cand1) // x < thres_cand1
+	// {					 //! filter_query.test(query_times)
 	// 	// step2_flag = 1;
 	// 	verifty_step = 1;
 	// } // TODO:合并上下的两次遍历
 	// printf("----------%d %d\n", query_times, x);
+	int fetch_cand_times = 1;
 
+	int reduce_total_num=0,total_all_num=0;
 	{ // 查询，eg[2,1,1,1];下面查询dist==2 or 1，1，1，而不是小于
 		step2_flag = 1;
 		for (int i = 0; i < SUBINDEX_NUM; i++)
@@ -1415,7 +1421,7 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 						}
 					}
 				}
-			}fetch_cand_step1+=existed_subkeys2.size();
+			}
 			// printf("linear size %d exist size %d clr_num%d \n", reached_subkey.size(), existed_subkeys.size(),tmp_clrs.size());
 			reached_subkey.clear();
 			// get_times(0, 1);
@@ -1716,6 +1722,8 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 							auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
 							if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
 							{
+
+								// if (val.dist == add_dist)
 								binary_times++;
 								if (its->sub_key == tmpsub1)
 									val.max_dist = 0;
@@ -1770,6 +1778,7 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 			end_time = *time;
 			insert_time += end_time - begin_time;
 		}
+
 		step2_flag = 0;
 		if (1)
 		{
@@ -1803,19 +1812,185 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 				cand_nums_set[6]++;
 			}
 		}
-		
-		reduce_total_num=cand_step1.size()-candidateAdd.size();
-		ocall_get_timeNow(&time_step1);
-		uint64_t esp1 = (time_step1 - time_begin) / 1e3;
-		// // auto para_opt=1.0 * (reduce_total_num*cand_set0_nums) / (esp1* cand_set2_nums);
-		// // printf("cand rate %lf data query %lf\n", dataset_size / feature_size * 1.0, (1.0 * candidate.size() / binary_times));
-		// if (!filter_query.test(query_times)) // x < thres_cand1//(1.0 * candidate.size() / binary_times) < (2 * dataset_size / feature_size * 1.0)
-		// {									 //??? >
-		// 	opt_refine++;					 //! filter_query.test(query_times)
-		// 	// step2_flag = 1;
-		// 	verifty_step = 1;
-		// } // TODO:合并上下的两次遍历
 
+		fetch_flag = 1;
+		for (int i = (hammdist[client_id] - SUBINDEX_NUM + 1) % SUBINDEX_NUM;;)
+		{
+			break; // TODO:
+			if (sub_hammdist[client_id][i] < 0)
+				continue;
+			ocall_get_timeNow(time);
+			begin_time = *time;
+
+			lookup_all_size = 0;
+			lookup_radius = sub_hammdist[client_id][i] + max_dist;
+			// get_times(1, 0);
+			tmp_dist = 0;
+			dt = 0;
+			tmp_visit.clear();
+			// printf("reach size %d\n", reached_subkey.size());
+			reached_subkey.clear();
+			existed_subkeys.clear();
+			tmp_clrs.clear();
+			bigger_clrs.clear();
+			mid_clrs.clear();
+			visited_keys.clear();
+
+			min_dist = UINT16_MAX;
+			cluster_node tmp_node;
+
+			c_info.node = clr[i][clr[i].size() - 1];
+			c_info.end = sub_linear_comp[i].size();
+			c_info.dist = 0; // popcount(sub[i] ^ clr[i][clr[i].size() - 1].subkey);
+			tmp_clrs.push_back(c_info);
+			uint32_t tmpkey = sub[i];
+
+			dt = 0; // sub[0] is finded
+			tmp_clrs.pop_back();
+			// get_times(0, 0);
+			uint32_t find_max_d = std::min(min_dist + sub_hammdist[client_id][i], max_dist), tmp_dist = min_dist; // 这个find-max-d是不是太大了，应该写在mindist增加之前
+
+			// for optimal to reduce the candidate; cautious
+			int sed_size = sub_hammdist[client_id][i];
+			for (int t = dt; t <= sed_size; t++)
+			{
+				for (auto &its : C_0_TO_subhammdis[t])
+				{
+					tmpsub1 = sub[i] ^ its;
+					sub_key_I[0] = tmpsub1, sub_key_I[1] = i;
+
+					for (int j = 0; j < bloom_hash_times; j += 4)
+					{
+						tmp_hash[0] = tmpsub1;
+						tmp_hash[1] = i + j * sub_index_num * 2;
+						MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + j * INT_SIZE);
+						// memcpy(bloom_hash + j * INT_SIZE, tmp_hash_out, std::min(bloom_hash_times - j, INT_SIZE) * INT_SIZE);
+					}
+					if (filters->contains(bloom_hash, bloom_hash_times * INT_SIZE)) // filters.contains(bloom_hash, bloom_hash_times * INT_SIZE)
+					{
+						if (reached_subkey.find(tmpsub1) == reached_subkey.end())
+						{
+							existed_subkeys.push_back(key_find{tmpsub1, (uint16_t)t, (uint16_t)find_max_d});
+						}
+					}
+				}
+			}
+			// printf("linear size %d exist size %d clr_num%d \n", reached_subkey.size(), existed_subkeys.size(),tmp_clrs.size());
+			reached_subkey.clear();
+			// get_times(0, 1);
+
+			uint32_t min_dist0 = min_dist;
+			// uint32_t find_max_d = std::min(min_dist + sub_hammdist[i], (uint64_t)max_dist), tmp_dist = min_dist; // 这个find-max-d是不是太大了，应该写在mindist增加之前
+			min_dist += sub_hammdist[client_id][i] * 2; // cautious- 1
+			find_clrs_num += (tmp_clrs.size() ? tmp_clrs.size() : 1);
+			if (1) // lookup_all_size >= (sub_linear_comp[i].size() >> 1) lookup_all_size >= ceil((double)sub_linear_comp[i].size() / 3)
+			{
+				uint32_t max_node = 0;
+				uint16_t tmp_min = 0, idx = 0, tmp_d;
+				uint32_t tmpkey_, max_find_dist;
+				for (int x = 0; x < existed_subkeys.size(); x++)
+				{
+					if (existed_subkeys[x].clr_idx == INT16_MAX)
+						continue;
+
+					tmp_min = UINT8_MAX;
+					tmpkey_ = existed_subkeys[x].subkey;
+					max_find_dist = min_dist0 + existed_subkeys[x].dist * 2;
+					for (int t = 0; t < tmp_clrs.size(); t++)
+					{
+						if (tmp_clrs[t].dist > max_find_dist)
+							continue;
+						tmp_d = popcount(tmp_clrs[t].node.subkey ^ tmpkey_);
+						if (tmp_d < tmp_min)
+						{
+							tmp_min = tmp_d;
+							idx = t; // cautious
+						}
+					}
+
+					if (tmp_min <= max_dist)
+					{
+						existed_subkeys[x].max_dist = tmp_min;
+						// existed_subkeys[x].max_dist = 0;//cautious
+						// search in tmpclr[idx]
+						existed_subkeys[x].clr_idx = idx;
+					}
+					else
+					{
+						// search in stash
+						existed_subkeys[x].clr_idx = tmp_clrs.size(); // too minor，不要随便乱改字段意义
+					}
+				}
+				c_info.node = clr[i][clr[i].size() - 1];
+				c_info.end = sub_linear_comp[i].size();
+				c_info.dist = popcount(sub[i] ^ clr[i][clr[i].size() - 1].subkey);
+				tmp_clrs.push_back(c_info);
+
+				std::sort(existed_subkeys.begin(), existed_subkeys.end(), [](key_find &a, key_find &b)
+						  { return a.clr_idx < b.clr_idx; }); // times too long cautious
+
+				bool flag = true;
+				int val_idx = 0;
+				uint32_t dt1 = std::max(dt, (int)(max_dist - min_dist0)); // cautious
+				if (min_dist0 + sub_hammdist[client_id][i] > max_dist)
+				{
+					// min_dist = UINT16_MAX;
+					uint32_t idx1 = clr[i].size() - 1;
+					begin_idx = clr[i][idx1].begin_idx;
+					end_idx = sub_linear_comp[i].size();
+					if (begin_idx < end_idx) // cautious for stash==0
+					{
+						for (; val_idx < existed_subkeys.size(); val_idx++) // auto &val : existed_subkeys
+						{
+							auto &val = existed_subkeys[val_idx];
+							auto &tmpsub1 = val.subkey;					   // why val.dist< is right not <
+							if (val.max_dist < max_dist || val.dist < dt1) //|| visited_subkeys.find(tmpsub1) != visited_subkeys.end() val.clr_idx != tmp_clrs.size() - 1 ||
+								continue;								   // stash只查max_dist没有减小的,==0表示已经查找到了？？cautious
+							// if (reached_subkey.find(tmpsub1) != reached_subkey.end())
+							// 	continue;
+
+							auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+							if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+							{
+								// if (val.dist == add_dist)
+								binary_times++;
+								if (its->sub_key == tmpsub1)
+									val.max_dist = 0;
+								// visited_subkeys.insert(its->sub_key); // why must ==? cautious
+								++hitliner;
+								// visited_keys.push_back({tmpsub1, its->skiplen, its->length}); // cautious 9-17
+
+								// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
+
+								gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
+							}
+						}
+					}
+				}
+			}
+
+		search_end:
+			// get_times(0, 2);
+			ocall_get_timeNow(time);
+			end_time = *time;
+			find_time += end_time - begin_time;
+			ocall_get_timeNow(time);
+			begin_time = *time;
+
+			vector<sub_info_comp> tmpv;
+			std::map<uint32_t, int> tmpm;
+			// the node finded by linear list or hashmap, to get candidate's id
+			visited_keys.clear();
+			ocall_get_timeNow(time);
+			end_time = *time;
+			insert_time += end_time - begin_time;
+			break;
+		}
+		fetch_flag = 0;
+
+	reduce_total_num=cand_step1.size()-candidateAdd.size();
+	total_all_num=candidate.size();
+		ocall_get_timeNow(&timeF);
 		// step2_flag = 1;
 		// // // printf("----------%d %d\n", query_times, x);
 		// if (x >= thres_cand1 && x < thres_cand2)
@@ -1830,22 +2005,22 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 			// {
 			// 	mix2 += candi_set_step2.count();
 			// }
-			if (verifty_step == 1)
-			{
-				verifty_step = 1;
-				// for (auto &val : cand_step1)
-				// {
-				// 	if (!candi_set.test(val))
-				// 	{
-				// 		candidate.push_back(val);
-				// 		candi_set.set(val);
-				// 	}
-				// }
-				// candidate.insert(cand_step1.begin(), cand_step1.end());
-				break;
-			}
-			if (!step2_flag && times)
-				break;
+			// if (step2_flag)
+			// {
+			// 	verifty_step = 1;
+			// 	// for (auto &val : cand_step1)
+			// 	// {
+			// 	// 	if (!candi_set.test(val))
+			// 	// 	{
+			// 	// 		candidate.push_back(val);
+			// 	// 		candi_set.set(val);
+			// 	// 	}
+			// 	// }
+			// 	// candidate.insert(cand_step1.begin(), cand_step1.end());
+			// 	break;
+			// }
+			// if (!step2_flag && times)
+			// 	break;
 			int i = (hammdist[client_id] - SUBINDEX_NUM + 1 - times) % SUBINDEX_NUM;
 			sub_hammdist[client_id][i] += 1;
 			// printf("%d %d\n", i,
@@ -2028,18 +2203,8 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 					}
 				}
 			}
+			// TODO:
 
-		fetch_cand_times = existed_subkeys.size();
-		auto para_opt= (1.0 *reduce_total_num / esp1)*(fetch_cand_step1/fetch_cand_times);
-			// printf("%lf \n",para_opt);	
-		if (0) // x < thres_cand1//(1.0 * candidate.size() / binary_times) < (2 * dataset_size / feature_size * 1.0)
-		{							 //??? >
-			opt_refine++;					 //! filter_query.test(query_times)
-			step2_flag = 1;
-			verifty_step = 1;
-		} // TODO:合并上下的两次遍历
-
-		
 			// step2_flag = 1;
 			// // printf("-----   %lf \n", (1.0 * x / existed_subkeys.size()));
 			// // printf("-----   %d %d %d\n", x, existed_subkeys.size(), thres_cand1);
@@ -2048,12 +2213,12 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 			// {
 			// 	step2_flag = 0;
 			// }
-			if (step2_flag)
-			{
-				sub_hammdist[client_id][i] -= 1;
-				verifty_step = 1;
-				break;
-			}
+			// if (step2_flag)
+			// {
+			// 	sub_hammdist[client_id][i] -= 1;
+			// 	verifty_step = 1;
+			// 	break;
+			// }
 
 			// printf("linear size %d exist size %d clr_num%d \n", reached_subkey.size(), existed_subkeys.size(),tmp_clrs.size());
 			reached_subkey.clear();
@@ -2385,6 +2550,7 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 			sub_hammdist[client_id][i] -= 1;
 		}
 	}
+	ocall_get_timeNow(&timeF2);
 	// printf("%d hitt %d misss\n", hittt, misss);
 	// printf("bloomHit:%lu bloomMiss:%lu sum%d\n", hitliner+hitmap, bloomMiss, hitliner+hitmap+bloomMiss);
 	// printf("hitmap %d hitliner %d \n", hitmap, hitliner);
@@ -2409,13 +2575,13 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 	vector<uint32_t> res_id;
 	res_id.reserve(5000);
 	information got_out;
-	// candi_num += candidate2.size() + candidateAdd.size();
+	candi_num += candidate2.size() + candidateAdd.size();
 
-	candi_num += candidate.size();
-	if (verifty_step)
-		candi_num += cand_step1.size();
-	else
-		candi_num += candidateAdd.size();
+	// candi_num += candidate.size() ;
+	// if (verifty_step)
+	// 	candi_num += cand_step1.size();
+	// else
+	// 	candi_num += candidateAdd.size();
 	if (candidate.size() < 10)
 	{
 		cand_nums[0]++;
@@ -2448,10 +2614,16 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 	// printf("htu  %d   miss %d\n", hittt, misss);
 	// -- -- -- -- -
 
+	// fetch_cand_times = existed_subkeys.size();
 	// 使用push_back插入Record实例
-	// record_info.push_back({fetch_cand_times, query_times, candidate.size(), candidate2.size() + candidateAdd.size(),
-	// 					   candidate.size() - candidate2.size() - candidateAdd.size(),
-	// 					   1.0 * (candidate.size() - candidate2.size() - candidateAdd.size()) / fetch_cand_times});
+
+	uint64_t esp1 = (timeF - timeP) / 1e3;
+	uint64_t esp2 = (timeF2 - timeP) / 1e3;
+	Record_Info_Refine record_(cand_set0_nums * 1ULL, total_all_num * 1ULL, query_times * 1ULL, reduce_total_num * 1ULL, candidate2.size() + candidateAdd.size() * 1ULL,
+							   candidate.size() - candidate2.size() - candidateAdd.size() * 1ULL,
+							   1.0 * (reduce_total_num*cand_set0_nums) / (esp1* cand_set2_nums), 0 * 1ULL, candidate.size() / cand_set0_nums * 1ULL, esp1, esp2, esp2 - esp1,
+							   (candidate.size() - candidate2.size() - candidateAdd.size()) / (esp2 - esp1), 1.0 * exist_num / fetch_num,  cand_set2_nums * 1ULL);
+	record_info.push_back(record_);
 
 	// printf("----size %d-----query %d candidate %d candi2 %d sub-nums %d rate %lf\n", fetch_cand_times, query_times, candidate.size(),
 	// 	   candidate2.size() + candidateAdd.size(), candidate.size() - candidate2.size() - candidateAdd.size(),
@@ -2493,6 +2665,7 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 			it++;
 		}
 	}
+	verifty_step = 1;
 	if (verifty_step)
 	{
 		for (auto it = cand_step1.begin(); it != cand_step1.end(); it++)
@@ -2635,37 +2808,45 @@ void containers::gen_cand_first(key_find &find_key, std::unordered_set<uint32_t>
 				// reached_subkey[comp.sub_key] = -1;
 				find_key.max_dist = 0;
 				j++;
+				// cand_set0_nums++;
+
 				uint32_t len = out_tmp[j];
+				if (step2_flag)
+					cand_set0_nums++;
+				else
+					cand_set2_nums++;
 				for (int l = j + 1; l <= j + len; l++)
 				{
 					// if (cand_first.find(out_tmp[l]) != cand_first.end())
 					// 	cand.emplace_back( out_tmp[l]);
 					// else
 					// 	cand_first.emplace_hint(cand_first.begin(), out_tmp[l]);
-					// if (step2_flag)
-					// {
-					// 	if (!candi_set.test(out_tmp[l]))
-					// 	{
-					// 		cand.emplace_back(out_tmp[l]);
-					// 		candi_set.set(out_tmp[l]);
-					// 	}
-					// 	// if (candi_set_step2.test(out_tmp[l]) && !candi_set.test(out_tmp[l]))
-					// 	// {
-					// 	// 	cand.emplace_back(out_tmp[l]);
-					// 	// 	candi_set.set(out_tmp[l]);
-					// 	// }
-					// 	// if (candi_first_set.test(out_tmp[l]))
-					// 	// 	candi_set_step2.set(out_tmp[l]);
-					// }
+					if (step2_flag)
+					{
+						cand_get0_times++;
+						if (!candi_set.test(out_tmp[l]))
+						{
+							//	cand_set0_nums++;
+							cand.emplace_back(out_tmp[l]);
+							candi_set.set(out_tmp[l]);
+						}
+						// if (candi_set_step2.test(out_tmp[l]) && !candi_set.test(out_tmp[l]))
+						// {
+						// 	cand.emplace_back(out_tmp[l]);
+						// 	candi_set.set(out_tmp[l]);
+						// }
+						// if (candi_first_set.test(out_tmp[l]))
+						// 	candi_set_step2.set(out_tmp[l]);
+					}
 					// else
 					{
-						if (!candi_set.test(out_tmp[l]))
+						if (!candi_set2.test(out_tmp[l]))
 						{
 							if (candi_first_set.test(out_tmp[l]))
 							{
 								candidateAdd.emplace_back(out_tmp[l]); // cautious
 								// cand.emplace_back(out_tmp[l]);
-								candi_set.set(out_tmp[l]);
+								candi_set2.set(out_tmp[l]);
 							}
 							else
 							{
@@ -2694,33 +2875,40 @@ void containers::gen_cand_first(key_find &find_key, std::unordered_set<uint32_t>
 	{
 		// reached_subkey[comp.sub_key] = -1;
 		find_key.max_dist = 0;
+
 		find_key.clr_idx = INT16_MAX;
+		if (step2_flag)
+			cand_set0_nums++;
+		else
+			cand_set2_nums++;
 		for (int j = 0; j < tmp_size; j++)
 		{
-			// if (step2_flag)
-			// {
-			// 	if (!candi_set.test(out_tmp[j]))
-			// 	{
-			// 		cand.emplace_back(out_tmp[j]);
-			// 		candi_set.set(out_tmp[j]);
-			// 	}
-			// 	// if (candi_set_step2.test(out_tmp[j]) && !candi_set.test(out_tmp[j]))
-			// 	// {
-			// 	// 	cand.emplace_back(out_tmp[j]);
-			// 	// 	candi_set.set(out_tmp[j]);
-			// 	// }
-			// 	// if (candi_first_set.test(out_tmp[j]))
-			// 	// 	candi_set_step2.set(out_tmp[j]);
-			// }
+			if (step2_flag)
+			{
+				cand_get0_times++;
+				if (!candi_set.test(out_tmp[j]))
+				{
+					// cand_set0_nums++;
+					cand.emplace_back(out_tmp[j]);
+					candi_set.set(out_tmp[j]);
+				}
+				// if (candi_set_step2.test(out_tmp[j]) && !candi_set.test(out_tmp[j]))
+				// {
+				// 	cand.emplace_back(out_tmp[j]);
+				// 	candi_set.set(out_tmp[j]);
+				// }
+				// if (candi_first_set.test(out_tmp[j]))
+				// 	candi_set_step2.set(out_tmp[j]);
+			}
 			// else
 			{
-				if (!candi_set.test(out_tmp[j]))
+				if (!candi_set2.test(out_tmp[j]))
 				{
 					if (candi_first_set.test(out_tmp[j]))
 					{
 						candidateAdd.emplace_back(out_tmp[j]);
 						// cand.emplace_back(out_tmp[j]);
-						candi_set.set(out_tmp[j]);
+						candi_set2.set(out_tmp[j]);
 					}
 					else
 					{
@@ -2741,7 +2929,6 @@ void containers::gen_cand_first(key_find &find_key, std::unordered_set<uint32_t>
 		}
 	}
 }
-
 void containers::gen_candidate(key_find &find_key, std::vector<uint32_t> &cand, sub_info_comp comp, vector<sub_info_comp> &tmp_keys,
 							   uint32_t i, uint32_t subkey, uint32_t dt, uint32_t cache_key)
 {
@@ -2816,13 +3003,21 @@ void containers::gen_candidate(key_find &find_key, std::vector<uint32_t> &cand, 
 				find_key.max_dist = 0;
 				j++;
 				uint32_t len = out_tmp[j];
+				cand_set0_nums++;
+
 				for (int l = j + 1; l <= j + len; l++)
 				{
+					cand_get0_times++;
+					if (fetch_flag)
+						fetch_num++;
+					// cand_set0_nums++;
 					if (!candi_set.test(out_tmp[l]))
 					{
 						cand.emplace_back(out_tmp[l]);
 						candi_set.set(out_tmp[l]);
 					}
+					else if (fetch_flag)
+						exist_num++;
 					lens++;
 				}
 				j += out_tmp[j] + 1;
@@ -2839,13 +3034,21 @@ void containers::gen_candidate(key_find &find_key, std::vector<uint32_t> &cand, 
 		// reached_subkey[comp.sub_key] = -1;
 		find_key.max_dist = 0;
 		find_key.clr_idx = INT16_MAX;
+		cand_set0_nums++;
+
 		for (int j = 0; j < tmp_size; j++)
 		{
+			if (fetch_flag)
+				fetch_num++;
+			cand_get0_times++;
+			// cand_set0_nums++;
 			if (!candi_set.test(out_tmp[j]))
 			{
 				cand.emplace_back(out_tmp[j]);
 				candi_set.set(out_tmp[j]);
 			}
+			else if (fetch_flag)
+				exist_num++;
 			// cand.emplace_back( out_tmp[j]);
 		}
 	}
@@ -3160,7 +3363,7 @@ void containers::linear_scan_first(uint32_t i, uint32_t begin, uint32_t end, uin
 void containers::test()
 {
 	record_info.clear();
-	query_times = 0;candi_num =0;
+	query_times = 0;
 	// hittt = 0;
 	// misss = 0;
 	// ------------test insert and query----------
@@ -3193,7 +3396,8 @@ void containers::test()
 		// 					   // i++;
 		int k = 1000;
 		ocall_get_timeNow(&end_time);
-		time_esp.push_back((end_time - begin_time));
+		record_info[record_info.size() - 1].run_time = end_time - begin_time;
+		// time_esp.push_back((end_time - begin_time));
 
 		// auto res = find_knn(temp_key, k);
 		// uint64_t cmp_hamm[2], tmp_fullkey[2];
@@ -3211,29 +3415,59 @@ void containers::test()
 	// 根据rate字段对recoInfo进行排序
 	// std::sort(record_info.begin(), record_info.end(), [](const Record_Info_Refine &a, const Record_Info_Refine &b)
 	// 		  { return a.sub_nums < b.sub_nums; });
+	std::sort(record_info.begin(), record_info.end(), [](const Record_Info_Refine &a, const Record_Info_Refine &b)
+			  { return a.sub_time_rate < b.sub_time_rate; });
 
-	// // 打印前10个Record作为示例
-	// for (auto &record : record_info)
+	// 打印前10个Record作为示例
+	for (size_t i = 0; i < 1000; ++i)
+	{
+		const auto &record = record_info[i];
+		// printf("%d \n", record.run_time);
+		// printf("%d %d\n", record.run_time / 1e6, record.binary_rate);
+		printf("----size %" PRIu64 "----get_total %" PRIu64 "-----query %" PRIu64 " candidate %" PRIu64 " candi2 %" PRIu64 " sub-nums %" PRIu64 "  cand_2 %" PRIu64 " esp1 %" PRIu64 " rate %lf "  " binary_times %" PRIu64 " sub-time %" PRIu64 " sub-time-r %" PRIu64 "  \n",
+			   record.fetch_cand_times,
+			   record.get_cand_times,
+			   record.query_times,
+			   record.candidate_size,
+			   record.candidate2_size,
+			   record.sub_nums,
+			   record.binary_time2,
+			   record.esp1,
+			   //    record.esp2,
+			      record.rate,
+			   //    record.run_time / 1e6, // 如果需要以秒为单位，可以这样处理
+			   record.binary_rate,
+			   record.sub_time,
+			   record.sub_time_rate);
+	}
+	// for (size_t i = 0; i < 1000; ++i)
 	// {
-	// 	// const auto &record = record_info[i];
-	// 	printf("%d \n", record.fetch_cand_times);
-	// 	// printf("----size %u-----query %u candidate %u candi2 %u sub-nums %u rate %lf\n",
-	// 	// 	   record.fetch_cand_times,
-	// 	// 	   record.query_times,
-	// 	// 	   record.candidate_size,
-	// 	// 	   record.candidate2_size,
-	// 	// 	   record.sub_nums,
-	// 	//    record.rate);
+	// 	const auto &record = record_info[i];
+	// 	// printf("%d \n", record.run_time);
+	// 	// printf("%d %d\n", record.run_time / 1e6, record.binary_rate);
+	// 	printf("----size %" PRIu64 "----get_total %" PRIu64 "-----query %" PRIu64 " candidate %" PRIu64 " candi2 %" PRIu64 " sub-nums %" PRIu64 "  cand_2 %" PRIu64 " rate %lf time %lf binary_times %" PRIu64 " sub-time %" PRIu64 " sub-time-r %" PRIu64 "  \n",
+	// 		   record.fetch_cand_times, record.get_cand_times,
+	// 		   record.query_times,
+	// 		   record.candidate_size,
+	// 		   record.candidate2_size,
+	// 		   record.sub_nums,
+	// 		   record.binary_time2,
+	// 		   record.esp1,
+	// 		   record.esp2,
+	// 		//    record.rate,
+	// 		   //    record.run_time / 1e6, // 如果需要以秒为单位，可以这样处理
+	// 		   record.binary_rate,
+	// 		   record.sub_time,
+	// 		   record.sub_time_rate);
 	// }
 
-	// sort in ascend
-	sort(time_esp.begin(), time_esp.end());
+	// // sort in ascend
+	// sort(time_esp.begin(), time_esp.end());
 	// // printf 95th tail
-	// printf("25th tail: %d\n", time_esp[time_esp.size() * 0.15]);
+	// printf("95th tail: %d\n", time_esp[time_esp.size() * 0.95]);
 	// printf("25th tail: %d\n", time_esp[time_esp.size() * 0.25]);
 	// printf("45th tail: %d\n", time_esp[time_esp.size() * 0.45]);
 	// printf("95th tail: %d\n", time_esp[time_esp.size() * 0.65]);
-	printf("95th tail: %d\n", time_esp[time_esp.size() * 0.95]);
 
 	// 用线性方式查找，观察数据集中特征值分布
 	// find_sim_linear(test_pool, test_targets);
@@ -3252,17 +3486,17 @@ void containers::test()
 	find_time /= 1e6;
 	insert_time /= 1e6;
 	verify_time /= 1e6;
-	// printf("resize times %d size %lld finded clrs times %d\n", resize_times, resize_size, find_clrs_num);
+	printf("resize times %d size %lld finded clrs times %d\n", resize_times, resize_size, find_clrs_num);
 
 	printf("fetch candidate time %d candi_num %d combs %d combs_hit %d bigun%d\n", times_gen, candi_num, combs, combs_hit, big_uneq);
 	// total时间（ms）， find：查询map和linear的时间，insert：插入到set<candidate>的时间，verify：验证candidate的时间
 	printf("total=time:%d,sum:%d, find-time:%d, insert-time:%d, verify-time:%d\n", total_time, find_time + insert_time + verify_time, find_time, insert_time, verify_time);
 	for (int t = 0; t < 6; t++)
 		bd_time[t] /= 1e6;
-	// printf("cal-cer one %d, bitmask %d, stash %d, cluster %d id_loading %d \n", bd_time[0], bd_time[1], bd_time[2], bd_time[3], bd_time[4]);
-	// printf("zero_num=%d  combine_clr_min=%d test target %d\n", zero_num, combine_clr_min, test_target);
+	printf("cal-cer one %d, bitmask %d, stash %d, cluster %d id_loading %d \n", bd_time[0], bd_time[1], bd_time[2], bd_time[3], bd_time[4]);
+	printf("zero_num=%d  combine_clr_min=%d test target %d\n", zero_num, combine_clr_min, test_target);
 
-	// printf("max_cache value %d %d\n", mix, mix2);
+	printf("max_cache value %d %d\n", mix, mix2);
 }
 void containers::changeHammingDist(uint64_t hammdist, int client_id)
 {
@@ -3373,7 +3607,6 @@ void init()
 }
 void test_run()
 {
-	opt_refine = 0;
 	cont.successful_num = 0;
 	cont.false_num = 0;
 	cont.hit_succ_num = 0;
@@ -3383,13 +3616,12 @@ void test_run()
 		cand_nums_set[i] = 0;
 	}
 	cont.test();
-	// for (int i = 0; i < 7; i++)
-	// {
-	// 	printf("cand %d before %d after %d\n", i, cand_nums_set[i], cand_nums[i]);
-	// }
-	printf("optm= %d.\n", opt_refine);
+	for (int i = 0; i < 7; i++)
+	{
+		printf("cand %d before %d after %d\n", i, cand_nums_set[i], cand_nums[i]);
+	}
 	printf("Successfully found similar photos! successful_num=%d.\n", cont.successful_num);
-	// printf("Successfully found similar photos! successful_num=%d hit %d false %d.\n", cont.successful_num, cont.hit_succ_num, cont.false_num);
+	printf("Successfully found similar photos! successful_num=%d hit %d false %d.\n", cont.successful_num, cont.hit_succ_num, cont.false_num);
 }
 void init_after_send()
 {
@@ -3416,6 +3648,7 @@ void init_after_send()
 	printf("The full sort entry is: %d \n", cont.full_key_sorted.size());
 	printf("comp_subkey %d\n", cont.sub_linear_comp->size());
 	printf("cache size %d\n", cont.data_cache.size());
+
 	printf("---------------- feature Rate %d\n", dataset_size / feature_size);
 }
 
@@ -3426,7 +3659,7 @@ void ecall_send_data(void *dataptr, size_t len)
 	info_uncomp info;
 	for (int i = 0; i < len; i++)
 	{
-		// if (cont.full_key_sorted.size() < DATA_LEN)
+		if (cont.full_key_sorted.size() < DATA_LEN)
 		{
 			info.fullkey[0] = data[i].first;
 			info.fullkey[1] = data[i].second;
@@ -3436,10 +3669,10 @@ void ecall_send_data(void *dataptr, size_t len)
 			// if (cont.test_pool.size() < cont.test_size)
 			// 	cont.test_pool.insert(data[i]);
 		}
-		// else
-		// {
-		// 	cont.tmp_test_pool.push_back(data[i]);
-		// }
+		else
+		{
+			cont.tmp_test_pool.push_back(data[i]);
+		}
 	}
 
 	// // printf("The full index entry is: %d \n",cont.test_pool.size()-1);
@@ -3607,8 +3840,10 @@ void containers::opt_full_index()
 	uint32_t complen = 0;
 
 	int real_total_num = 0;
+	dataset_size += full_key_sorted.size() * SUBINDEX_NUM;
 	for (int i = 0; i < full_key_sorted.size();)
 	{
+
 		real_total_num++;
 		fullkey_len++;
 		info_idy.clear();
@@ -3849,7 +4084,6 @@ void containers::make_clusters()
 	vector<uint32_t> max_dist_inClr;
 	uint32_t clr_sum_size = 0, clr_max, clr_min;
 	vector<uint32_t> clr_keys(0);
-	dataset_size += full_key_sorted.size() * SUBINDEX_NUM;
 	for (int i = 0; i < SUBINDEX_NUM; i++)
 	{
 		for (int t = 0; t < full_key_sorted.size(); t++)
@@ -3859,7 +4093,6 @@ void containers::make_clusters()
 		}
 		std::sort(full_key_sorted.begin(), full_key_sorted.end(), [](const info_uncomp &a, const info_uncomp &b)
 				  { return a.target < b.target; });
-
 		for (int t = 0; t < full_key_sorted.size(); t++)
 		{
 			if (t == 0 || full_key_sorted[t].target != full_key_sorted[t - 1].target)
@@ -3867,6 +4100,7 @@ void containers::make_clusters()
 				feature_size++;
 			}
 		}
+
 		if (min_clr_size < 300)
 			clr[i] = kmodes(i, clr_keys);
 		cluster_node cl_d;

@@ -62,13 +62,12 @@ set(BOOST_LIBRARY_OBJ boost_thread boost_system boost_serialization)
 
 set(SYSTEM_LIBRARY_OBJ pthread)
 
-set(ENCODER onnxruntime)
 
 set(SGX_INCLUDE_PATH /opt/intel/sgxsdk/include)
 include_directories(../include ../App ${SGX_INCLUDE_PATH})
 
 set(OPENSSL_LIBRARY_OBJ ssl crypto)
-set(THIRD_OBJ ${OPENSSL_LIBRARY_OBJ}  ${BOOST_LIBRARY_OBJ} ${SYSTEM_LIBRARY_OBJ} ${ENCODER})
+set(THIRD_OBJ ${OPENSSL_LIBRARY_OBJ}  ${BOOST_LIBRARY_OBJ} ${SYSTEM_LIBRARY_OBJ})
 
 aux_source_directory(../Comm/ COMM_SRC)
 add_library(CommCore ${COMM_SRC})
@@ -82,8 +81,6 @@ set(SGXOPENSSL_INCLUDE_PATH /opt/intel/sgxssl/include)
 set(SGXOPENSSL_LIBRARY_PATH /opt/intel/sgxssl/lib64)
 include_directories(${SGXOPENSSL_INCLUDE_PATH})
 link_directories(${SGXOPENSSL_LIBRARY_PATH})
-include_directories(./onnxruntime-linux-x64-1.17.1/include)
-link_directories(./onnxruntime-linux-x64-1.17.1/lib)
 
 # add_executable(server server.cc)
 # target_link_libraries(server ${FINAL_OBJ})
