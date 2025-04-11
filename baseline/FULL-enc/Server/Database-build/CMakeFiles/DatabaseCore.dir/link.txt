@@ -1,0 +1,2 @@
+/usr/bin/llvm-ar qc libDatabaseCore.a CMakeFiles/DatabaseCore.dir/PartEncIndex.cpp.o
+/usr/bin/llvm-ranlib libDatabaseCore.a
