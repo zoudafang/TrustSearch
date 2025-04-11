@@ -183,12 +183,12 @@ int SGX_CDECL main(int argc, char *argv[])
         return -1;
     }
 
-    uint32_t threshold = 8, clr_size = 100, clr_dist = 5, dataSet = 0, comb_num = 50, aggre_size = 50, cache = 20000;
+    uint32_t threshold = 8, clr_size = 100, clr_dist = 4, dataSet = 1, comb_num = 50, aggre_size = 50, cache = 20000;
     int option;
     int invalid = 0;
     const char optString[] = "h:s:d:t:l:c:v:b:n:m:";
     int kmodes = 50, steps = 20, is_var = 1;
-    float ktimes = 0.5;
+    float ktimes = 0.4;
 
     while ((option = getopt(argc, argv, optString)) != -1)
     {
@@ -335,16 +335,16 @@ init:
     clock_t endTime = clock();
 
     double costTime = double(endTime - startTime) / CLOCKS_PER_SEC;
-    printf("The test took %lf seconds.\n", costTime);
-    for (int t = 0; t < 6; t++)
-    {
-        ecall_change_para(global_eid, dataSet, 8 + 4 * t, clr_size, clr_dist, comb_num, aggre_size, kmodes, steps, is_var, ktimes);
-        startTime = clock();
-        test_from_enclave();
-        endTime = clock();
-        costTime = double(endTime - startTime) / CLOCKS_PER_SEC;
-        printf("The test took %lf seconds.\n", costTime);
-    }
+    // printf("The test took %lf seconds.\n", costTime);
+    // for (int t = 0; t < 4; t++)
+    // {
+    //     ecall_change_para(global_eid, dataSet, 8 + 4 * t, clr_size, clr_dist, comb_num, aggre_size, kmodes, steps, is_var, ktimes);
+    //     startTime = clock();
+    //     test_from_enclave();
+    //     endTime = clock();
+    //     costTime = double(endTime - startTime) / CLOCKS_PER_SEC;
+    //     printf("The test took %lf seconds.\n", costTime);
+    // }
     // for (int t = 25; t < 33 ; t++)
     // {
     //     ecall_change_para(global_eid, dataSet, 0 + 1 * t, clr_size, clr_dist, comb_num, aggre_size, kmodes, steps, is_var, ktimes);
@@ -355,7 +355,8 @@ init:
     //     printf("The test took %lf seconds.\n", costTime);
     // }
 
-    // start_server();
+    printf("satrt server successful.\n");
+    start_server();
 
     /* Destroy the enclave */
     sgx_destroy_enclave(global_eid);
