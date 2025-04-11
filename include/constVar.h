@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#define CACHE_SIZE 500000 // for sgx1: 5000
 
-#define CACHE_SIZE 5000 //
 // the type of chunker
 enum CHUNKER_TYPE
 {
@@ -27,20 +27,23 @@ static const char CLIENT_CERT[] = "../../key/client/client.crt";
 static const char CLIENT_KEY[] = "../../key/client/client.key";
 static const char CA_CERT[] = "key/ca/ca.crt";              // 注意可执行文件和key文件的相对路径
 static const char CA_CERT_CLIENT[] = "../../key/ca/ca.crt"; // 注意可执行文件和key文件的相对路径
-static const char SERVER_IP[] = "192.168.5.103";        //client和server通信的IP和Port
-static const int SERVER_PORT = 8090;
+static const char SERVER_IP[] = "8.141.80.98";              // "60.205.8.107";             //  60.205.8.107
+static const int SERVER_PORT = 9030;
 static const uint32_t THREAD_STACK_SIZE = 8 * 1024 * 1024;
 
-static const uint32_t DATA_LEN = 5124668; // 5124668;
+static const uint32_t DATA_LEN = 10321118; // 5124668;
 static const uint32_t SIFT_LEN = 1000000;
+static const uint32_t SIFT_LEN_1B = 10321118;
+static const uint32_t DATA_LEN_1B = 10321118;
+
 
 static const uint32_t SEND_BATCH_LEN = 512;
 static const uint32_t ENC_BATCH_SIZE_IMG = 100 * (16 + 8); // 按照batch加密img数据集，<feature, target>
 static const uint32_t ENC_BATCH_SIZE_SIFT = 100 * 16;      // <feature>
 
-static const uint32_t PAGE_SIZE = 64; // 4 * 4; // 1024*4
-static const uint32_t PAGE_SIZE_B = PAGE_SIZE * 4;
-static const uint32_t SUBINDEX_NUM = 6; // byte of subkey
+static const uint32_t PAGE_SIZE = 64;              // 4 * 4; // 1024*4
+static const uint32_t PAGE_SIZE_B = PAGE_SIZE * 4; // 1024*4
+static const uint32_t SUBINDEX_NUM = 8;            // byte of subkey
 
 static const uint32_t MASK_INF = 0x80000000; // infrequent keys
 static const uint32_t MASK_SIM = 0x40000000; // similar keys
@@ -48,6 +51,58 @@ static const uint32_t MASK_LEN = 0x3fffffff;
 
 static const uint32_t MAX_CLIENT_NUM = 10000;
 static uint32_t CLIENT_NUM = 7;
+
+struct Record_Info_Refine
+{
+    uint64_t fetch_cand_times;
+    uint64_t get_cand_times;
+    uint64_t query_times;
+    uint64_t candidate_size;
+    uint64_t candidate2_size;
+    uint64_t sub_nums;
+    double rate;
+    uint64_t run_time;
+    uint64_t binary_rate;
+    uint64_t esp1;
+    uint64_t esp2;
+    uint64_t sub_time;
+    uint64_t sub_time_rate;
+    double exist_rate;
+    uint64_t binary_time2;
+    Record_Info_Refine(uint64_t fetch_cand_times,
+                       uint64_t get_cand_times,
+                       uint64_t query_times,
+                       uint64_t candidate_size,
+                       uint64_t candidate2_size,
+                       uint64_t sub_nums,
+                       double rate,
+                       uint64_t run_time,
+                       uint64_t binary_rate,
+                       uint64_t esp1,
+                       uint64_t esp2,
+                       uint64_t sub_time,
+                       uint64_t sub_time_rate,
+                       double exist_rate,
+                       uint64_t binary_time2)
+        : fetch_cand_times(fetch_cand_times),
+          get_cand_times(get_cand_times),
+          query_times(query_times),
+          candidate_size(candidate_size),
+          candidate2_size(candidate2_size),
+          sub_nums(sub_nums),
+          rate(rate),
+          esp1(esp1),
+          esp2(esp2),
+          run_time(run_time),
+          binary_rate(binary_rate),
+          sub_time(sub_time),
+          sub_time_rate(sub_time_rate),
+          exist_rate(exist_rate),
+          binary_time2(binary_time2)
+    {
+    }
+};
+
 struct key_find
 {
     uint32_t subkey;
@@ -70,7 +125,6 @@ struct LRU_cache
 {
     uint32_t capacity;
     uint32_t len;
-    uint32_t remain_size;
     ids_node *index_head;
     ids_node *index_tail;
 };
@@ -82,7 +136,7 @@ enum QUERY_ETPE
     SERVER_RUN,
     KILL_SERVER,
     QUERY_KNN,
-    MULTI_CLIENT
+    MULTI_CLIENT,
 };
 static std::string p = "kl9DWMr4us0PcFeZ";
 static uint8_t *const_sessionKey = reinterpret_cast<uint8_t *>(const_cast<char *>(p.c_str()));

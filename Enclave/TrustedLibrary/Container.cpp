@@ -99,20 +99,20 @@ containers::containers()
 	// sub_hammdist=hammdist/sub_index_num;
 	fullkey_len = keybit / 32;
 
-	// for (int j = 0; j < sub_index_num; j++)
-	sub_hammdist[0] = floor((double)hammdist[0] / sub_index_num);
+	for (int j = 0; j < sub_index_num; j++)
+		sub_hammdist[0][j] = -1;
 
 	// the sum of sub_hammdist is hammdist - sub_index_num + 1
-	// for (int j = hammdist; j > 0;)
-	// {
-	// 	for (int i = 0; i < sub_index_num; i++)
-	// 	{
-	// 		if (j <= 0)
-	// 			break;
-	// 		sub_hammdist[i]++; // if hammdist=8,sub_hammdist={2,1,1,1}
-	// 		j--;
-	// 	}
-	// }
+	for (int j = hammdist[0] + 1; j > 0;)
+	{
+		for (int i = 0; i < sub_index_num; i++)
+		{
+			if (j <= 0)
+				break;
+			sub_hammdist[0][i]++; // if hammdist=8,sub_hammdist={2,1,1,1}; 12={2,1,1,1,1,1}
+			j--;
+		}
+	}
 }
 bool customCompare_fullkey(const info_uncomp &p1, const info_uncomp &p2)
 {
@@ -389,19 +389,8 @@ void containers::initialize()
 
 	for (int j = 0; j < sub_index_num; j++)
 		inc_max_dist[j] = 2;
-	// bloom_parameters parameters;
-	// parameters.projected_element_count = SUBINDEX_NUM * 1000000; // 预计插入initialize_size个元素 //cautious
-	// parameters.false_positive_probability = 0.1;				 // 期望的误判率为0.1 cautious
-	// parameters.compute_optimal_parameters();					 // 计算最优参数
-	// parameters.random_seed = 0xA5A5A5A5;
-	// bloom_hash_times = parameters.optimal_parameters.number_of_hashes;
-	// printf("bloom_hash_times=%d\n", bloom_hash_times);
-	// // for (int i = 0; i < 4; i++)
-	// filters = bloom_filter(parameters);
 
 	cryptoObj = new EcallCrypto(CIPHER_TYPE, HASH_TYPE);
-	// EVP_MD_CTX *mdCtx = EVP_MD_CTX_new();
-	// EVP_CIPHER_CTX *cipherCtx_ = EVP_CIPHER_CTX_new();
 	uint8_t *dataKey_ = const_dataKey;
 	// tmp_ids_block = new uint8_t[1024 * 300];
 
@@ -417,23 +406,138 @@ void containers::initialize()
 	// delete cryptoObj;
 	return;
 }
+pair<uint32_t, uint32_t> find_nearest_element_avx2(const std::vector<uint32_t> &vec, uint32_t q, uint32_t begin, uint32_t end)
+{
+	size_t len = end - begin;
+	// size_t len = vec.size();
+	uint32_t min_distance = std::numeric_limits<uint32_t>::max();
+	int min_index = -1;
+
+	const __m256i q_vec = _mm256_set1_epi32(q);
+
+	int simd_len = len - 7;
+	for (size_t i = 0; i < simd_len; i += 8)
+	{
+		__m256i vec_data = _mm256_loadu_si256((__m256i *)(vec.data() + i + begin));
+		__m256i xor_result = _mm256_xor_si256(vec_data, q_vec);
+
+		// 计算汉明距离
+		__m256i hamming_dist = _mm256_set1_epi32(0);
+		for (int j = 0; j < 32; j++)
+		{
+			__m256i mask = _mm256_set1_epi32(1 << j);
+			__m256i bit_set = _mm256_and_si256(xor_result, mask);
+			hamming_dist = _mm256_add_epi32(hamming_dist, _mm256_srli_epi32(bit_set, j));
+		}
+
+		// 查找最小汉明距离及其索引
+		for (int j = 0; j < 8; j++)
+		{
+			uint32_t distance;
+			switch (j)
+			{
+			case 0:
+				distance = _mm256_extract_epi32(hamming_dist, 0);
+				break;
+			case 1:
+				distance = _mm256_extract_epi32(hamming_dist, 1);
+				break;
+			case 2:
+				distance = _mm256_extract_epi32(hamming_dist, 2);
+				break;
+			case 3:
+				distance = _mm256_extract_epi32(hamming_dist, 3);
+				break;
+			case 4:
+				distance = _mm256_extract_epi32(hamming_dist, 4);
+				break;
+			case 5:
+				distance = _mm256_extract_epi32(hamming_dist, 5);
+				break;
+			case 6:
+				distance = _mm256_extract_epi32(hamming_dist, 6);
+				break;
+			case 7:
+				distance = _mm256_extract_epi32(hamming_dist, 7);
+				break;
+			}
+			if (distance < min_distance)
+			{
+				min_distance = distance;
+				min_index = i + j + begin;
+			}
+		}
+	}
+
+	// 处理剩余的元素
+	for (size_t i = (len / 8) * 8; i < len; i++)
+	{
+		uint32_t distance = __builtin_popcount(vec[i + begin] ^ q);
+		if (distance < min_distance)
+		{
+			min_distance = distance;
+			min_index = i + begin;
+		}
+	}
+
+	return {min_index, min_distance};
+}
 void containers::get_test_pool()
 {
-	// 从测试集获取test pool数据
-	uint32_t index1 = 0;
-	uint32_t end = tmp_test_pool.size();
-	while (test_pool.size() < test_size && end > 0)
+	std::vector<int> numbers = {590,591,707,513,720,569,710,161,106,192,140,659,95,919,886,873,918,696,702,92,662,532,903,91,331,69,511,592,751,83,82,821,107,540,556,826,81,889,523,522,689,699,563,887,566,570,721,103,898,900,712,533,330,663,705,516,719,723,902,99,971,701,698,656,752,822,557,517,559,558,823,852,479,480,518,561,529,708,519,969,520,571,560,521,96,482,98,649,481,483,97,648,709,711,713 };
+	for(auto&num:numbers)
 	{
-		index1++;
-		sgx_read_rand(reinterpret_cast<unsigned char *>(&index1), sizeof(index1));
+	filter_query.set(num);
+		// std::cout << "filter_query.set(" << num << ");" << std::endl;
+	}
+
+	// 从测试集获取test pool数据
+	uint32_t index1 = 5556;
+	// sgx_read_rand(reinterpret_cast<unsigned char *>(&index1), sizeof(index1));
+	uint32_t end = tmp_test_pool.size();
+	index1 %= end;
+	// index1 = 8437;
+	printf("query index1: %d\n", index1);
+	while (test_pool.size() < 1000 && end > 0)
+	{
+		index1 += 1;
+		// sgx_read_rand(reinterpret_cast<unsigned char *>(&index1), sizeof(index1));
 		index1 %= end;
 		test_pool.push_back(tmp_test_pool[index1]);
-		// test_targets.push_back(tmp_test_targets[index1]);
+		if (tmp_test_targets.size())
+		{
+			test_targets.push_back(tmp_test_targets[index1]);
+			tmp_test_targets[index1] = tmp_test_targets[end - 1];
+		}
+		else
+			test_targets.push_back(0);
 		auto tmp = tmp_test_pool[index1];
-		// tmp_test_pool[index1] = tmp_test_pool[end - 1];
-		// // tmp_test_targets[index1] = tmp_test_targets[end - 1];
-		// end--;
+		tmp_test_pool[index1] = tmp_test_pool[end - 1];
+		end--;
 	}
+
+	// uint64_t t1, t2;
+	// t1 = 0b1001111110000110111100110000110010000100000010100010010100010011ULL, t2 = 0b0110100110011101101110110100101110010001101110101101010111011100ULL;
+	// test_pool.push_back({t1, t2});
+	// t1 = 0b1001110110010111010101110001110110000101001100011010000000000101ULL, t2 = 0b1110011101111110010010110000101101001111011100000011010000110110ULL;
+	// test_pool.push_back({t1, t2});
+	// t1 = 0b1000011101110011000011100011000100110001101001110001000111011000ULL, t2 = 0b0000101110011000110101111111010001111000101010101100001010010001ULL;
+	// test_pool.push_back({t1, t2});
+	// t1 = 0b0000101110011000110101111111010001111000101010101100001010010001ULL, t2 = 0b0101111010011100011110100011101110100111001000111001011011010001ULL;
+	// test_pool.push_back({t1, t2});
+	// t1 = 0b1011011101100101101011101000010101100010110001000001010111011101ULL, t2 = 0b0010010100100011010011110111110001001101110010111000100111101001ULL;
+	// test_pool.push_back({t1, t2});
+	// t1 = 0b0110101010100111001001011001011111011101011110111001011011010000ULL, t2 = 0b1100100010000000100101111011011011100110001100010011111010011101ULL;
+	// test_pool.push_back({t1, t2});
+
+	// t1 = 0b0011010111111111100011111101110100010000000110011001011001100000ULL, t2 = 0b1000001001111011011001110110010101010101111100100010011010111111ULL;
+	// test_pool.push_back({t1, t2});
+	// t1 = 0b0000000011110011111110000011100011100110100001000010010101000101ULL, t2 = 0b0000010100000100101100110010000010100100111010100011110000100011ULL;
+	// test_pool.push_back({t1, t2});
+	// t1 = 0b0001000101010111111101000101100001001100000110001110101101001001ULL, t2 = 0b1110100010001101010011110110101001000011110100110110011001010101ULL;
+	// test_pool.push_back({t1, t2});
+	// t1 = 0b0001110110100001101011110011100011101011001001111110110010011010ULL, t2 = 0b1011001010111001101010001001101011000010001110010011101010110010ULL;
+	// test_pool.push_back({t1, t2});
 
 	uint64_t temp_key[2] = {0};
 	uint32_t begin = 0, index = 0; // begin:the first index of test
@@ -486,16 +590,45 @@ void containers::get_test_pool()
 }
 int zero_num = 0;
 
+static int cand_nums[10] = {0};
+static int cand_nums_set[10] = {0};
+static int cand_set_nums = 0, mix = 0, mix2 = 0;
+static int thres_cand1 = 0, thres_cand2 = 50090000; // cautious
+int step2_flag;
 int times_gen = 0, combs = 0, combs_hit = 0, find_clrs_num = 0;
+uint32_t client_id = 0;
+static uint32_t query_times = 0;
+static int hittt = 0;
+static int misss = 0;
+int dataset_size = 0, feature_size = 0, opt_refine = 0;
 std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_target, int client_id) // ocall_get_timeNow
 {
+	cand_set_nums = 0;
+	query_times++;
+	uint32_t binary_times = 1;
+	// candi_num=0;
+
+	int verifty_step = 0;
 	uint64_t *total_time_now = new uint64_t[1];
 	long long total_begin_time = 0, total_end_time = 0;
-	// ocall_get_timeNow(total_time_now);
+	ocall_get_timeNow(total_time_now);
 	total_begin_time = *total_time_now;
 
-	unordered_set<uint32_t> candidate;
+	uint64_t fetch_cand_step1,fetch_cand_times = 0,reduce_total_num=0;
+	uint64_t time_begin, time_step1, time_step2;
+
+	vector<uint32_t> candidate;
 	std::unordered_map<uint32_t, int> reached_subkey;
+	unordered_set<uint32_t> cand_first;
+	candi_first_set.reset();
+	cand_step1.clear();
+
+	candi_set_step2.reset();
+	candidateAdd.clear();
+	candi_set.reset();
+	step2_flag = 0;
+	// bitset<DATA_LEN * 5> candi_first_set1;
+	// candi_first_set = std::move(candi_first_set1);
 
 	candidate.clear();
 	candidate.reserve(50000);
@@ -528,10 +661,8 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 	static int loopBegin = 0;
 	static int times = 0;
 	static int line_times = 0;
-	static int hittt = 0;
-	static int misss = 0;
 	int out_key[1], sub_key_I[2];
-	uint32_t tmp_hash[2], hash_size = ((bloom_hash_times >> 2) + (bloom_hash_times & 0x3 != 0) * 4) * INT_SIZE; // ceil(times/4)*4
+	uint32_t tmp_hash[2], hash_size = ceil((float)bloom_hash_times / 4) * 16; // ceil(times/4)*4
 	uint8_t tmp_hash_out[32], bloom_hash[hash_size];
 	static uint32_t candiNUM = 0;
 
@@ -543,13 +674,16 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 	uint32_t tmp_dist = 0, tmp_count, tmp_min_idx, min_dist;
 	uint32_t begin_idx, end_idx, lookup_all_size = 0, lookup_radius;
 
+	ocall_get_timeNow(&time_begin);
 	for (int i = 0; i < SUBINDEX_NUM; i++)
 	{
-		// ocall_get_timeNow(time);
+		if (sub_hammdist[client_id][i] < 0)
+			continue;
+		ocall_get_timeNow(time);
 		begin_time = *time;
 
 		lookup_all_size = 0;
-		lookup_radius = sub_hammdist[client_id] + max_dist;
+		lookup_radius = sub_hammdist[client_id][i] + max_dist;
 		// get_times(1, 0);
 		tmp_dist = 0;
 		dt = 0;
@@ -565,40 +699,40 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 		min_dist = UINT16_MAX;
 		// find the near clusters that may contains the subkey; hamming(subkey, query_sub_key) <= sub_hamm[i]
 		// based on triangular inequality
-		for (int t = 0; t < clr[i].size() - 1; t++)
-		{
-			begin_idx = clr[i][t].begin_idx;
-			end_idx = clr[i][t + 1].begin_idx;
-			tmp_dist = popcount(sub[i] ^ clr[i][t].subkey);
-			lookup_all_size += end_idx - begin_idx;
+		// for (int t = 0; t < clr[i].size() - 1; t++) // TODO:可以优化，如果计算 -1
+		// {
+		// 	begin_idx = clr[i][t].begin_idx;
+		// 	end_idx = clr[i][t + 1].begin_idx;
+		// 	tmp_dist = popcount(sub[i] ^ clr[i][t].subkey);
+		// 	lookup_all_size += end_idx - begin_idx;
 
-			c_info.node = clr[i][t];
-			c_info.end = end_idx;
-			c_info.dist = tmp_dist;
-			if (tmp_dist > sub_hammdist[client_id] + max_dist - 2) //- 2 -1
-			{
-				if (tmp_dist == sub_hammdist[client_id] + max_dist - 1)
-				{
-					mid_clrs.push_back(c_info);
-				}
-				else if (tmp_dist == sub_hammdist[client_id] + max_dist)
-				{
-					bigger_clrs.push_back(c_info);
-					// for dist == hammdist+max_dist; it must only contains subkey whose hamm dist from cluster equals max_dist, and dist from subkey equals sub_hamm;
-					// so bigger_clrs's all dist is max_dist
-				}
-				continue;
-			}
-			tmp_clrs.push_back(c_info);
-		}
+		// 	c_info.node = clr[i][t];
+		// 	c_info.end = end_idx;
+		// 	c_info.dist = tmp_dist;
+		// 	if (tmp_dist > sub_hammdist[client_id][i] + max_dist - 2) //- 2 -1
+		// 	{
+		// 		if (tmp_dist == sub_hammdist[client_id][i] + max_dist - 1)
+		// 		{
+		// 			mid_clrs.push_back(c_info);
+		// 		}
+		// 		else if (tmp_dist == sub_hammdist[client_id][i] + max_dist)
+		// 		{
+		// 			bigger_clrs.push_back(c_info);
+		// 			// for dist == hammdist+max_dist; it must only contains subkey whose hamm dist from cluster equals max_dist, and dist from subkey equals sub_hamm;
+		// 			// so bigger_clrs's all dist is max_dist
+		// 		}
+		// 		continue;
+		// 	}
+		// 	tmp_clrs.push_back(c_info);
+		// }
 
-		min_dist = UINT16_MAX;
-		if (tmp_clrs.size())
-		{
-			std::sort(tmp_clrs.begin(), tmp_clrs.end(), [](cluster_info &a, cluster_info &b)
-					  { if(a.dist!=b.dist)return a.dist < b.dist;else return a.node.begin_idx < b.node.begin_idx; });
-			min_dist = tmp_clrs[0].dist;
-		}
+		// min_dist = UINT16_MAX;
+		// if (tmp_clrs.size())
+		// {
+		// 	std::sort(tmp_clrs.begin(), tmp_clrs.end(), [](cluster_info &a, cluster_info &b)
+		// 			  { if(a.dist!=b.dist)return a.dist < b.dist;else return a.node.begin_idx < b.node.begin_idx; });
+		// 	min_dist = tmp_clrs[0].dist;
+		// }
 		// min_dist = (tmp_clrs.size() > 0 ? tmp_clrs[0].dist : UINT16_MAX);
 		cluster_node tmp_node;
 
@@ -608,35 +742,20 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 		tmp_clrs.push_back(c_info);
 		uint32_t tmpkey = sub[i];
 
-		for (int t = 0; t < bloom_hash_times; t += 4)
-		{
-			tmp_hash[0] = sub[i];
-			tmp_hash[1] = i + t * sub_index_num * 2;
-			MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + t * INT_SIZE);
-			// memcpy(bloom_hash + t * INT_SIZE, tmp_hash_out, std::min(bloom_hash_times - t, (uint32_t)4) * INT_SIZE);
-		}
-		if (filters->contains(bloom_hash, bloom_hash_times * INT_SIZE)) // filters.contains(bloom_hash, bloom_hash_times * INT_SIZE)
-		{
-			if (sub_hammdist[client_id] <= 1 && tmp_clrs.size() == 1 && mid_clrs.size()) // tmp-clrs只有stash，可以从bigger里面查找
+		/*	for (int t = 0; t < bloom_hash_times; t += 4)
 			{
-				tmp_node = mid_clrs[0].node;
-				begin_idx = tmp_node.begin_idx;
-				end_idx = mid_clrs[0].end;
-				auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpkey, compareFirst_comp);
-				if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpkey || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
-				{
-					key_find kf{0, 0, 0};
-					// visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
-					gen_candidate(kf, candidate, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
-				}
+				tmp_hash[0] = sub[i];
+				tmp_hash[1] = i + t * sub_index_num * 2;
+				MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + t * INT_SIZE);
+				// memcpy(bloom_hash + t * INT_SIZE, tmp_hash_out, std::min(bloom_hash_times - t, (uint32_t)4) * INT_SIZE);
 			}
-			else if (sub_hammdist[client_id] <= 0 && tmp_clrs.size() == 1 && bigger_clrs.size()) // tmp-clrs只有stash，可以从bigger里面查找
+			if (filters->contains(bloom_hash, bloom_hash_times * INT_SIZE)) // filters.contains(bloom_hash, bloom_hash_times * INT_SIZE)
 			{
-				for (int id = 0; id < 1; id++)
+				if (sub_hammdist[client_id][i] <= 1 && tmp_clrs.size() == 1 && mid_clrs.size()) // tmp-clrs只有stash，可以从bigger里面查找
 				{
-					tmp_node = bigger_clrs[id].node;
+					tmp_node = mid_clrs[0].node;
 					begin_idx = tmp_node.begin_idx;
-					end_idx = bigger_clrs[id].end;
+					end_idx = mid_clrs[0].end;
 					auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpkey, compareFirst_comp);
 					if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpkey || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
 					{
@@ -645,60 +764,81 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 						gen_candidate(kf, candidate, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
 					}
 				}
-			}
-			else
-			{
-				if (min_dist > max_dist)
+				else if (sub_hammdist[client_id][i] <= 0 && tmp_clrs.size() == 1 && bigger_clrs.size()) // tmp-clrs只有stash，可以从bigger里面查找
 				{
-					tmp_min_idx = tmp_clrs.size() - 1;
+					for (int id = 0; id < 1; id++)
+					{
+						tmp_node = bigger_clrs[id].node;
+						begin_idx = tmp_node.begin_idx;
+						end_idx = bigger_clrs[id].end;
+						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpkey, compareFirst_comp);
+						if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpkey || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+						{
+							key_find kf{0, 0, 0};
+							// visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
+							gen_candidate(kf, candidate, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
+						}
+					}
 				}
 				else
-					tmp_min_idx = 0;
-				// for (int t = 0; t < tmp_clrs.size(); t++) // find 0,实际上只需要考虑stash和最近的，因为最近的一定是最小的
 				{
-					// if (tmp_clrs[t].dist > tmp_clrs[0].dist)
-					// 	break;
-					// if (tmp_clrs[t].dist > max_dist)
-					// {
-					// 	t = tmp_clrs.size() - 1;
-					// } // cautious
-					tmp_node = tmp_clrs[tmp_min_idx].node;
-					begin_idx = tmp_clrs[tmp_min_idx].node.begin_idx;
-					end_idx = tmp_clrs[tmp_min_idx].end;
-
-					auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpkey, compareFirst_comp);
-					if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpkey || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+					if (min_dist > max_dist)
 					{
-						key_find kf{0, 0, 0};
-						// visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
-						gen_candidate(kf, candidate, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
+						tmp_min_idx = tmp_clrs.size() - 1;
+					}
+					else
+						tmp_min_idx = 0;
+					// for (int t = 0; t < tmp_clrs.size(); t++) // find 0,实际上只需要考虑stash和最近的，因为最近的一定是最小的
+					{
+						// if (tmp_clrs[t].dist > tmp_clrs[0].dist)
+						// 	break;
+						// if (tmp_clrs[t].dist > max_dist)
+						// {
+						// 	t = tmp_clrs.size() - 1;
+						// } // cautious
+						tmp_node = tmp_clrs[tmp_min_idx].node;
+						begin_idx = tmp_clrs[tmp_min_idx].node.begin_idx;
+						end_idx = tmp_clrs[tmp_min_idx].end;
+
+						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpkey, compareFirst_comp);
+						if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpkey || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+						{
+							key_find kf{0, 0, 0};
+							// visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
+							gen_candidate(kf, candidate, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
+						}
 					}
 				}
 			}
-		}
-		dt = 1; // sub[0] is finded
+		*/
+		dt = 0; // sub[0] is finded
 		tmp_clrs.pop_back();
 		// get_times(0, 0);
+		uint32_t find_max_d = std::min(min_dist + sub_hammdist[client_id][i], max_dist), tmp_dist = min_dist; // 这个find-max-d是不是太大了，应该写在mindist增加之前
 
-		uint32_t find_max_d = std::min(min_dist + sub_hammdist[client_id], (uint64_t)max_dist), tmp_dist = min_dist; // 这个find-max-d是不是太大了，应该写在mindist增加之前
+		// for optimal to reduce the candidate; cautious
+		int sed_size = sub_hammdist[client_id][i] - 1; // sub_hammdist[client_id][i]-1;
+		if (i == (hammdist[client_id] - SUBINDEX_NUM + 1) % SUBINDEX_NUM)
+			sed_size = sub_hammdist[client_id][i];
+		/*
+				for (auto val = tmp_clrs.begin(); val < tmp_clrs.end();)
+				{
+					tmp_node = val->node;
+					begin_idx = val->node.begin_idx;
+					end_idx = val->end;																					// get_search_numbers(sub_keybit,sub_hammdist[i])
+					if ((val->dist + max_dist) <= sub_hammdist[client_id][i] || val->node.group_size < combine_clr_min) // end_idx - begin_idx < 500 (val->dist + max_dist - 1) <= sub_hammdist[i] || val->node.group_size < combine_clr_min
+					{
 
-		for (auto val = tmp_clrs.begin(); val < tmp_clrs.end();)
-		{
-			tmp_node = val->node;
-			begin_idx = val->node.begin_idx;
-			end_idx = val->end;																				 // get_search_numbers(sub_keybit,sub_hammdist[i])
-			if ((val->dist + max_dist) <= sub_hammdist[client_id] || val->node.group_size < combine_clr_min) // end_idx - begin_idx < 500 (val->dist + max_dist - 1) <= sub_hammdist[i] || val->node.group_size < combine_clr_min
-			{
-				linear_scan(i, begin_idx, end_idx, sub[i], sub_hammdist[client_id], candidate, reached_subkey);
+						linear_scan(client_id, i, begin_idx, end_idx, sub[i], sed_size, candidate, reached_subkey); // cautious 效果可能不好？？
 
-				val = tmp_clrs.erase(val);
-			}
-			else
-				val++;
-		}
-		// get_times(0, 3);
-
-		for (int t = dt; t <= sub_hammdist[client_id]; t++)
+						val = tmp_clrs.erase(val);
+					}
+					else
+						val++;
+				}
+				get_times(0, 3);
+*/
+		for (int t = dt; t <= sed_size; t++)
 		{
 			for (auto &its : C_0_TO_subhammdis[t])
 			{
@@ -720,81 +860,91 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 					}
 				}
 			}
-		}
+		}fetch_cand_step1+=existed_subkeys.size();
 		// printf("linear size %d exist size %d clr_num%d \n", reached_subkey.size(), existed_subkeys.size(),tmp_clrs.size());
 		reached_subkey.clear();
 		// get_times(0, 1);
 
 		uint32_t min_dist0 = min_dist;
 		// uint32_t find_max_d = std::min(min_dist + sub_hammdist[i], (uint64_t)max_dist), tmp_dist = min_dist; // 这个find-max-d是不是太大了，应该写在mindist增加之前
-		min_dist += sub_hammdist[client_id] * 2; // cautious- 1
+		min_dist += sub_hammdist[client_id][i] * 2; // cautious- 1
 		find_clrs_num += (tmp_clrs.size() ? tmp_clrs.size() : 1);
 
-		if (min_dist0 + sub_hammdist[client_id] > max_dist)
-		{
-			lookup_all_size + sub_linear_comp[i].size() - clr[i][clr[i].size() - 1].begin_idx;
-		}
+		// if (min_dist0 + sub_hammdist[client_id][i] > max_dist)
+		// {
+		// 	lookup_all_size + sub_linear_comp[i].size() - clr[i][clr[i].size() - 1].begin_idx;
+		// }
 		if (1) // lookup_all_size >= (sub_linear_comp[i].size() >> 1) lookup_all_size >= ceil((double)sub_linear_comp[i].size() / 3)
 		{
-
 			uint32_t max_node = 0;
 			// for (; max_node < tmp_clrs.size(); max_node++)
 			// {
 			// 	if (tmp_clrs[max_node].dist > max_dist)
 			// 		break;
 			// }
-			for (auto tmpc = tmp_clrs.begin(); tmpc != tmp_clrs.end() && tmpc->dist <= (lookup_radius >> 1); tmpc = tmp_clrs.erase(tmpc))
-			{
-				tmp_node = tmpc->node;
-				begin_idx = tmp_node.begin_idx;
-				end_idx = tmpc->end;
-				for (int j = 0; j < existed_subkeys.size(); j++)
+			/*	for (auto tmpc = tmp_clrs.begin(); tmpc != tmp_clrs.end() && tmpc->dist <= (lookup_radius >> 1); tmpc = tmp_clrs.erase(tmpc))
 				{
-					auto &val = existed_subkeys[j];
-					if (val.max_dist == 0)
-						continue;
-
-					auto &tmpsub1 = val.subkey;
-					// if (val.dist < dt) // if 的次数太多，能否优化  || visited_subkeys.find(tmpsub1) != visited_subkeys.end()
-					// 	continue;
-					uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
-					if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
-						continue;
-					val.max_dist = tmp;
-
-					auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
-					if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+					tmp_node = tmpc->node;
+					begin_idx = tmp_node.begin_idx;
+					end_idx = tmpc->end;
+					for (int j = 0; j < existed_subkeys.size(); j++)
 					{
-						if (its->sub_key == tmpsub1)
+						auto &val = existed_subkeys[j];
+						if (val.max_dist == 0)
+							continue;
+
+						auto &tmpsub1 = val.subkey;
+						// if (val.dist < dt) // if 的次数太多，能否优化  || visited_subkeys.find(tmpsub1) != visited_subkeys.end()
+						// 	continue;
+						uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
+						if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
+							continue;
+						val.max_dist = tmp;
+
+						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+						if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
 						{
-							val.max_dist = 0;
-							// val.dist = INT16_MAX;
-							val.clr_idx = INT16_MAX;
+							if (its->sub_key == tmpsub1)
+							{
+								val.max_dist = 0;
+								// val.dist = INT16_MAX;
+								val.clr_idx = INT16_MAX;
+							}
+							// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
+							gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
 						}
-						// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
-						gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
 					}
+
+					// get_times(0, 3);
+					// for (auto &tmpnode : visited_keys)
+					// {
+					// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
+					// }
+					// visited_keys.clear();
+					// get_times(0, 4);
 				}
-
-				// get_times(0, 3);
-				// for (auto &tmpnode : visited_keys)
-				// {
-				// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
-				// }
-				// visited_keys.clear();
-				// get_times(0, 4);
-			}
-
-			if (tmp_clrs.size())
-				std::sort(tmp_clrs.begin(), tmp_clrs.end(), [](cluster_info &a, cluster_info &b)
-						  { return a.node.begin_idx < b.node.begin_idx; });
+	*/
+			// if (tmp_clrs.size())
+			// 	std::sort(tmp_clrs.begin(), tmp_clrs.end(), [](cluster_info &a, cluster_info &b)
+			// 			  { return a.node.begin_idx < b.node.begin_idx; });
 			uint16_t tmp_min = 0, idx = 0, tmp_d;
 			uint32_t tmpkey_, max_find_dist;
 			for (int x = 0; x < existed_subkeys.size(); x++)
 			{
-
 				if (existed_subkeys[x].clr_idx == INT16_MAX)
 					continue;
+
+				// for (int t = 0; t < bloom_hash_times; t += 4)
+				// {
+				// 	tmp_hash[0] = existed_subkeys[x].subkey;
+				// 	tmp_hash[1] = i + t * SUBINDEX_NUM * 2;
+				// 	MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + t * INT_SIZE);
+				// }
+				// if (!sub_filters[i][sed_size].contains(bloom_hash, bloom_hash_times * INT_SIZE))
+				// {
+				// 	existed_subkeys[x].clr_idx = tmp_clrs.size();
+				// 	continue;
+				// }
 
 				tmp_min = UINT8_MAX;
 				tmpkey_ = existed_subkeys[x].subkey;
@@ -834,41 +984,41 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 
 			bool flag = true;
 			int val_idx = 0;
-			for (; val_idx < existed_subkeys.size(); val_idx++) // auto &val : existed_subkeys
-			{
-				auto &val = existed_subkeys[val_idx];
-				// if (reached_subkey.find(val.subkey) != reached_subkey.end())
-				// {
-				// 	val.max_dist = 0;
-				// 	continue;
-				// }
-				if (val.clr_idx == INT16_MAX)
-					continue;
+			// for (; val_idx < existed_subkeys.size(); val_idx++) // auto &val : existed_subkeys
+			// {
+			// 	auto &val = existed_subkeys[val_idx];
+			// 	// if (reached_subkey.find(val.subkey) != reached_subkey.end())
+			// 	// {
+			// 	// 	val.max_dist = 0;
+			// 	// 	continue;
+			// 	// }
+			// 	if (val.clr_idx == INT16_MAX)
+			// 		continue;
 
-				if (val.clr_idx == tmp_clrs.size() - 1 && flag)
-				{
-					// get_times(0, 3);
-					flag = false;
-					break;
-					// continue;
-				}
-				int begin = tmp_clrs[val.clr_idx].node.begin_idx;
-				int end = tmp_clrs[val.clr_idx].end;
+			// 	if (val.clr_idx == tmp_clrs.size() - 1 && flag)
+			// 	{
+			// 		// get_times(0, 3);
+			// 		flag = false;
+			// 		break;
+			// 		// continue;
+			// 	}
+			// 	int begin = tmp_clrs[val.clr_idx].node.begin_idx;
+			// 	int end = tmp_clrs[val.clr_idx].end;
 
-				auto tmpsub1 = val.subkey;
-				auto its = std::lower_bound(sub_linear_comp[i].begin() + begin, sub_linear_comp[i].begin() + end, tmpsub1, compareFirst_comp);
-				if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
-				{
-					if (its->sub_key == tmpsub1)
-						val.max_dist = 0;
-					// visited_subkeys.insert(its->sub_key); // why must ==? cautious
-					++hitliner;
-					// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
+			// 	auto tmpsub1 = val.subkey;
+			// 	auto its = std::lower_bound(sub_linear_comp[i].begin() + begin, sub_linear_comp[i].begin() + end, tmpsub1, compareFirst_comp);
+			// 	if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+			// 	{
+			// 		if (its->sub_key == tmpsub1)
+			// 			val.max_dist = 0;
+			// 		// visited_subkeys.insert(its->sub_key); // why must ==? cautious
+			// 		++hitliner;
+			// 		// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
 
-					// visited_keys.push_back({tmpsub1, its->skiplen, its->length}); // cautious 9-17
-					gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
-				}
-			}
+			// 		// visited_keys.push_back({tmpsub1, its->skiplen, its->length}); // cautious 9-17
+			// 		gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
+			// 	}
+			// }
 			// get_times(0, 3);
 			// for (auto &tmpnode : visited_keys)
 			// {
@@ -876,103 +1026,107 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 			// }
 			// visited_keys.clear();
 			// get_times(0, 4);
-
-			uint32_t mid_idx, mid_dist;
-			for (auto &val : existed_subkeys)
-			{
-				mid_idx = -1;
-				mid_dist = -1;
-				tmpsub1 = val.subkey;
-
-				if (val.dist == sub_hammdist[client_id] - 1 && val.max_dist >= max_dist) //!=0
-				{
-					for (auto &val1 : mid_clrs)
-					{
-						tmp_node = val1.node;
-						begin_idx = tmp_node.begin_idx;
-						end_idx = val1.end;
-						uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
-						if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
-							continue;
-						val.max_dist = tmp;
-
-						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
-						if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+			/*
+						uint32_t mid_idx, mid_dist;
+						for (auto &val : existed_subkeys)
 						{
+							mid_idx = -1;
+							mid_dist = -1;
+							tmpsub1 = val.subkey;
 
-							// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
-							gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
+							if (val.dist == sub_hammdist[client_id][i] - 1 && val.max_dist >= max_dist) //!=0
+							{
+								for (auto &val1 : mid_clrs)
+								{
+									tmp_node = val1.node;
+									begin_idx = tmp_node.begin_idx;
+									end_idx = val1.end;
+									uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
+									if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
+										continue;
+									val.max_dist = tmp;
+
+									auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+									if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+									{
+
+										// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
+										gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
+									}
+									val.max_dist = 0; // cautious only stash later
+									break;
+								}
+							}
+							else if (val.dist == sub_hammdist[client_id][i] && val.max_dist >= (max_dist - 1)) //!=0
+							{
+								for (int t = 0; t < mid_clrs.size(); t++)
+								{
+									auto &val1 = mid_clrs[t];
+									tmp_node = val1.node;
+									uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
+									if (tmp < mid_dist)									// find max太大可省略，是不是小于呢？
+									{
+										mid_idx = t;
+										mid_dist = tmp;
+										if (tmp == max_dist - 1)
+											break;
+									}
+								}
+
+								if (mid_dist > max_dist)
+									continue;
+
+								tmp_node = mid_clrs[mid_idx].node;
+								begin_idx = tmp_node.begin_idx;
+								end_idx = mid_clrs[mid_idx].end;
+								auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+								if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+								{
+
+									gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
+								}
+								val.max_dist = 0; // cautious only stash later
+							}
 						}
-						val.max_dist = 0; // cautious only stash later
-						break;
-					}
-				}
-				else if (val.dist == sub_hammdist[client_id] && val.max_dist >= (max_dist - 1)) //!=0
-				{
-					for (int t = 0; t < mid_clrs.size(); t++)
-					{
-						auto &val1 = mid_clrs[t];
-						tmp_node = val1.node;
-						uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
-						if (tmp < mid_dist)									// find max太大可省略，是不是小于呢？
+						// get_times(0, 3);
+						// for (auto &tmpnode : visited_keys)
+						// {
+						// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
+						// }
+						// visited_keys.clear();
+						// get_times(0, 4);
+
+						// uint32_t bigger_idx = 0;
+						// for optimal to reduce the candidate ; cautious
+						// if (i == (hammdist[client_id] - SUBINDEX_NUM + 1) % SUBINDEX_NUM)
 						{
-							mid_idx = t;
-							mid_dist = tmp;
-							if (tmp == max_dist - 1)
-								break;
-						}
-					}
+							for (auto &val : existed_subkeys)
+							{
+								if (val.dist == sub_hammdist[client_id][i] && val.max_dist >= max_dist) //!=0
+								{
+									for (auto &val1 : bigger_clrs)
+									{
+										auto tmpsub1 = val.subkey;
+										tmp_node = val1.node;
+										begin_idx = tmp_node.begin_idx;
+										end_idx = val1.end;
+										uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
+										if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
+											continue;
+										val.max_dist = tmp;
 
-					if (mid_dist > max_dist)
-						continue;
+										auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+										if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+										{
 
-					tmp_node = mid_clrs[mid_idx].node;
-					begin_idx = tmp_node.begin_idx;
-					end_idx = mid_clrs[mid_idx].end;
-					auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
-					if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
-					{
-
-						gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
-					}
-					val.max_dist = 0; // cautious only stash later
-				}
-			}
-			// get_times(0, 3);
-			// for (auto &tmpnode : visited_keys)
-			// {
-			// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
-			// }
-			// visited_keys.clear();
-			// get_times(0, 4);
-
-			uint32_t bigger_idx = 0;
-			for (auto &val : existed_subkeys)
-			{
-				if (val.dist == sub_hammdist[client_id] && val.max_dist >= max_dist) //!=0
-				{
-					for (auto &val1 : bigger_clrs)
-					{
-						auto tmpsub1 = val.subkey;
-						tmp_node = val1.node;
-						begin_idx = tmp_node.begin_idx;
-						end_idx = val1.end;
-						uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
-						if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
-							continue;
-						val.max_dist = tmp;
-
-						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
-						if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
-						{
-
-							gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
-						}
-						val.max_dist = 0; // cautious only stash later
-						break;
-					}
-				}
-			}
+											gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
+										}
+										val.max_dist = 0; // cautious only stash later
+										break;
+									}
+								}
+							}
+						}*/
 			// get_times(0, 3);
 			// for (auto &tmpnode : visited_keys)
 			// {
@@ -985,7 +1139,7 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 			// 	get_times(0, 3);
 			// set before clusters
 			uint32_t dt1 = std::max(dt, (int)(max_dist - min_dist0)); // cautious
-			if (min_dist0 + sub_hammdist[client_id] > max_dist)
+			if (min_dist0 + sub_hammdist[client_id][i] > max_dist)
 			{
 				// min_dist = UINT16_MAX;
 				uint32_t idx1 = clr[i].size() - 1;
@@ -1005,6 +1159,8 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
 						if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
 						{
+							if ((i != (hammdist[client_id] - SUBINDEX_NUM + 1) % SUBINDEX_NUM))
+								binary_times++;
 							if (its->sub_key == tmpsub1)
 								val.max_dist = 0;
 							// visited_subkeys.insert(its->sub_key); // why must ==? cautious
@@ -1030,10 +1186,10 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 
 	search_end:
 		// get_times(0, 2);
-		// ocall_get_timeNow(time);
+		ocall_get_timeNow(time);
 		end_time = *time;
 		find_time += end_time - begin_time;
-		// ocall_get_timeNow(time);
+		ocall_get_timeNow(time);
 		begin_time = *time;
 
 		vector<sub_info_comp> tmpv;
@@ -1053,9 +1209,1181 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 		// 	gen_candidate(tmpk, candidate, visited_keys[y], tmp_visit, tmpv, i, sub[i], 100);
 		// }
 		visited_keys.clear();
-		// ocall_get_timeNow(time);
+		ocall_get_timeNow(time);
 		end_time = *time;
 		insert_time += end_time - begin_time;
+	}
+
+	int x = candidate.size();
+	verifty_step = 0;
+
+	// candidate2.clear();
+	// candidate2 = candidate;
+	// candi_set2.reset();
+	// candi_set2 = candi_set;
+
+	// if (1) // x < thres_cand1//(1.0 * candidate.size() / binary_times) < (2 * dataset_size / feature_size * 1.0)
+	// {
+	// 	opt_refine++; //! filter_query.test(query_times)
+	// 	// step2_flag = 1;
+	// 	verifty_step = 1;
+	// } // TODO:合并上下的两次遍历
+	// printf("----------%d %d\n", query_times, x);
+
+	{ // 查询，eg[2,1,1,1];下面查询dist==2 or 1，1，1，而不是小于
+		step2_flag = 1;
+		for (int i = 0; i < SUBINDEX_NUM; i++)
+		{
+			// optimal
+			if (i == (hammdist[client_id] - SUBINDEX_NUM + 1) % SUBINDEX_NUM)
+				continue;
+
+			if (sub_hammdist[client_id][i] < 0)
+				continue;
+			ocall_get_timeNow(time);
+			begin_time = *time;
+
+			vector<key_find> existed_subkeys2;
+			lookup_all_size = 0;
+			lookup_radius = sub_hammdist[client_id][i] + max_dist;
+			// get_times(1, 0);
+			tmp_dist = 0;
+			dt = 0;
+			tmp_visit.clear();
+			// printf("reach size %d\n", reached_subkey.size());
+			reached_subkey.clear();
+			tmp_clrs.clear();
+			bigger_clrs.clear();
+			mid_clrs.clear();
+			visited_keys.clear();
+
+			min_dist = UINT16_MAX;
+			// find the near clusters that may contains the subkey; hamming(subkey, query_sub_key) <= sub_hamm[i]
+			// based on triangular inequality
+			for (int t = 0; t < clr[i].size() - 1; t++)
+			{
+				begin_idx = clr[i][t].begin_idx;
+				end_idx = clr[i][t + 1].begin_idx;
+				tmp_dist = popcount(sub[i] ^ clr[i][t].subkey);
+				lookup_all_size += end_idx - begin_idx;
+
+				c_info.node = clr[i][t];
+				c_info.end = end_idx;
+				c_info.dist = tmp_dist;
+				if (tmp_dist > sub_hammdist[client_id][i] + max_dist - 2) //- 2 -1
+				{
+					if (tmp_dist == sub_hammdist[client_id][i] + max_dist - 1)
+					{
+						mid_clrs.push_back(c_info);
+					}
+					else if (tmp_dist == sub_hammdist[client_id][i] + max_dist)
+					{
+						bigger_clrs.push_back(c_info);
+						// for dist == hammdist+max_dist; it must only contains subkey whose hamm dist from cluster equals max_dist, and dist from subkey equals sub_hamm;
+						// so bigger_clrs's all dist is max_dist
+					}
+					continue;
+				}
+				tmp_clrs.push_back(c_info);
+			}
+
+			min_dist = UINT16_MAX;
+			if (tmp_clrs.size())
+			{
+				std::sort(tmp_clrs.begin(), tmp_clrs.end(), [](cluster_info &a, cluster_info &b)
+						  { if(a.dist!=b.dist)return a.dist < b.dist;else return a.node.begin_idx < b.node.begin_idx; });
+				min_dist = tmp_clrs[0].dist;
+			}
+			// min_dist = (tmp_clrs.size() > 0 ? tmp_clrs[0].dist : UINT16_MAX);
+			cluster_node tmp_node;
+
+			c_info.node = clr[i][clr[i].size() - 1];
+			c_info.end = sub_linear_comp[i].size();
+			c_info.dist = 0; // popcount(sub[i] ^ clr[i][clr[i].size() - 1].subkey);
+			// tmp_clrs.push_back(c_info);
+			// uint32_t tmpkey = sub[i];
+
+			// for (int t = 0; t < bloom_hash_times; t += 4)
+			// {
+			// 	tmp_hash[0] = sub[i];
+			// 	tmp_hash[1] = i + t * sub_index_num * 2;
+			// 	MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + t * INT_SIZE);
+			// 	// memcpy(bloom_hash + t * INT_SIZE, tmp_hash_out, std::min(bloom_hash_times - t, (uint32_t)4) * INT_SIZE);
+			// }
+			// if (filters->contains(bloom_hash, bloom_hash_times * INT_SIZE)) // filters.contains(bloom_hash, bloom_hash_times * INT_SIZE)
+			// {
+			// 	if (sub_hammdist[client_id][i] <= 1 && tmp_clrs.size() == 1 && mid_clrs.size()) // tmp-clrs只有stash，可以从bigger里面查找
+			// 	{
+			// 		tmp_node = mid_clrs[0].node;
+			// 		begin_idx = tmp_node.begin_idx;
+			// 		end_idx = mid_clrs[0].end;
+			// 		auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpkey, compareFirst_comp);
+			// 		if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpkey || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+			// 		{
+			// 			key_find kf{0, 0, 0};
+			// 			// visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
+			// 			gen_cand_first(kf, cand_first, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+			// 		}
+			// 	}
+			// 	else if (sub_hammdist[client_id][i] <= 0 && tmp_clrs.size() == 1 && bigger_clrs.size()) // tmp-clrs只有stash，可以从bigger里面查找
+			// 	{
+			// 		for (int id = 0; id < 1; id++)
+			// 		{
+			// 			tmp_node = bigger_clrs[id].node;
+			// 			begin_idx = tmp_node.begin_idx;
+			// 			end_idx = bigger_clrs[id].end;
+			// 			auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpkey, compareFirst_comp);
+			// 			if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpkey || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+			// 			{
+			// 				key_find kf{0, 0, 0};
+			// 				// visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
+			// 				gen_cand_first(kf, cand_first, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+			// 			}
+			// 		}
+			// 	}
+			// 	else
+			// 	{
+			// 		if (min_dist > max_dist)
+			// 		{
+			// 			tmp_min_idx = tmp_clrs.size() - 1;
+			// 		}
+			// 		else
+			// 			tmp_min_idx = 0;
+			// 		// for (int t = 0; t < tmp_clrs.size(); t++) // find 0,实际上只需要考虑stash和最近的，因为最近的一定是最小的
+			// 		{
+			// 			// if (tmp_clrs[t].dist > tmp_clrs[0].dist)
+			// 			// 	break;
+			// 			// if (tmp_clrs[t].dist > max_dist)
+			// 			// {
+			// 			// 	t = tmp_clrs.size() - 1;
+			// 			// } // cautious
+			// 			tmp_node = tmp_clrs[tmp_min_idx].node;
+			// 			begin_idx = tmp_clrs[tmp_min_idx].node.begin_idx;
+			// 			end_idx = tmp_clrs[tmp_min_idx].end;
+
+			// 			auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpkey, compareFirst_comp);
+			// 			if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpkey || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+			// 			{
+			// 				key_find kf{0, 0, 0};
+			// 				// visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
+			// 				gen_cand_first(kf, cand_first, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+			// 			}
+			// 		}
+			// 	}
+			// }
+			// dt = 1; // sub[0] is finded
+			// tmp_clrs.pop_back();
+			// get_times(0, 0);
+
+			uint32_t find_max_d = std::min(min_dist + sub_hammdist[client_id][i], max_dist), tmp_dist = min_dist; // 这个find-max-d是不是太大了，应该写在mindist增加之前
+
+			// for (auto val = tmp_clrs.begin(); val < tmp_clrs.end();)
+			// {
+			// 	tmp_node = val->node;
+			// 	begin_idx = val->node.begin_idx;
+			// 	end_idx = val->end;																					// get_search_numbers(sub_keybit,sub_hammdist[i])
+			// 	if ((val->dist + max_dist) <= sub_hammdist[client_id][i] || val->node.group_size < combine_clr_min) // end_idx - begin_idx < 500 (val->dist + max_dist - 1) <= sub_hammdist[i] || val->node.group_size < combine_clr_min
+			// 	{
+			// 		// linear_scan(i, begin_idx, end_idx, sub[i], sub_hammdist[client_id][i], candidate, reached_subkey);
+			// 		linear_scan_first(i, begin_idx, end_idx, sub[i], sub_hammdist[client_id][i], cand_first, reached_subkey, candi_first_set, candidate);
+			// 		val = tmp_clrs.erase(val);
+			// 	}
+			// 	else
+			// 		val++;
+			// }
+			get_times(0, 3);
+
+			for (int t = sub_hammdist[client_id][i]; t <= sub_hammdist[client_id][i]; t++)
+			{
+				for (auto &its : C_0_TO_subhammdis[t])
+				{
+					tmpsub1 = sub[i] ^ its;
+					sub_key_I[0] = tmpsub1, sub_key_I[1] = i;
+
+					for (int j = 0; j < bloom_hash_times; j += 4)
+					{
+						tmp_hash[0] = tmpsub1;
+						tmp_hash[1] = i + j * sub_index_num * 2;
+						MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + j * INT_SIZE);
+						// memcpy(bloom_hash + j * INT_SIZE, tmp_hash_out, std::min(bloom_hash_times - j, INT_SIZE) * INT_SIZE);
+					}
+					if (filters->contains(bloom_hash, bloom_hash_times * INT_SIZE)) // filters.contains(bloom_hash, bloom_hash_times * INT_SIZE)
+					{
+						if (reached_subkey.find(tmpsub1) == reached_subkey.end())
+						{
+							existed_subkeys2.push_back(key_find{tmpsub1, (uint16_t)t, (uint16_t)find_max_d});
+						}
+					}
+				}
+			}fetch_cand_step1+=existed_subkeys2.size();
+			// printf("linear size %d exist size %d clr_num%d \n", reached_subkey.size(), existed_subkeys.size(),tmp_clrs.size());
+			reached_subkey.clear();
+			// get_times(0, 1);
+
+			uint32_t min_dist0 = min_dist;
+			// uint32_t find_max_d = std::min(min_dist + sub_hammdist[i], (uint64_t)max_dist), tmp_dist = min_dist; // 这个find-max-d是不是太大了，应该写在mindist增加之前
+			min_dist += sub_hammdist[client_id][i] * 2; // cautious- 1
+			find_clrs_num += (tmp_clrs.size() ? tmp_clrs.size() : 1);
+
+			if (min_dist0 + sub_hammdist[client_id][i] > max_dist)
+			{
+				lookup_all_size + sub_linear_comp[i].size() - clr[i][clr[i].size() - 1].begin_idx;
+			}
+			if (1) // lookup_all_size >= (sub_linear_comp[i].size() >> 1) lookup_all_size >= ceil((double)sub_linear_comp[i].size() / 3)
+			{
+				uint32_t max_node = 0;
+				// for (; max_node < tmp_clrs.size(); max_node++)
+				// {
+				// 	if (tmp_clrs[max_node].dist > max_dist)
+				// 		break;
+				// }
+				// for (auto tmpc = tmp_clrs.begin(); tmpc != tmp_clrs.end() && tmpc->dist <= (lookup_radius >> 1); tmpc = tmp_clrs.erase(tmpc))
+				// {
+				// 	tmp_node = tmpc->node;
+				// 	begin_idx = tmp_node.begin_idx;
+				// 	end_idx = tmpc->end;
+				// 	for (int j = 0; j < existed_subkeys2.size(); j++)
+				// 	{
+				// 		auto &val = existed_subkeys2[j];
+				// 		if (val.max_dist == 0)
+				// 			continue;
+
+				// 		auto &tmpsub1 = val.subkey;
+				// 		// if (val.dist < dt) // if 的次数太多，能否优化  || visited_subkeys.find(tmpsub1) != visited_subkeys.end()
+				// 		// 	continue;
+				// 		uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
+				// 		if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
+				// 			continue;
+				// 		val.max_dist = tmp;
+
+				// 		auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+				// 		if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+				// 		{
+				// 			if (its->sub_key == tmpsub1)
+				// 			{
+				// 				val.max_dist = 0;
+				// 				// val.dist = INT16_MAX;
+				// 				val.clr_idx = INT16_MAX;
+				// 			}
+				// 			// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
+				// 			gen_cand_first(val, cand_first, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+				// 		}
+				// 	}
+
+				// 	// get_times(0, 3);
+				// 	// for (auto &tmpnode : visited_keys)
+				// 	// {
+				// 	// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
+				// 	// }
+				// 	// visited_keys.clear();
+				// 	// get_times(0, 4);
+				// }
+
+				if (tmp_clrs.size())
+					std::sort(tmp_clrs.begin(), tmp_clrs.end(), [](cluster_info &a, cluster_info &b)
+							  { return a.node.begin_idx < b.node.begin_idx; });
+				uint16_t tmp_min = 0, idx = 0, tmp_d;
+				uint32_t tmpkey_, max_find_dist;
+				for (int x = 0; x < existed_subkeys2.size(); x++)
+				{
+					if (existed_subkeys2[x].clr_idx == INT16_MAX)
+						continue;
+
+					// for (int t = 0; t < bloom_hash_times; t += 4)
+					// {
+					// 	tmp_hash[0] = existed_subkeys[x].subkey;
+					// 	tmp_hash[1] = i + t * SUBINDEX_NUM * 2;
+					// 	MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + t * INT_SIZE);
+					// }
+					// if (!sub_filters[i][sub_hammdist[client_id][i]].contains(bloom_hash, bloom_hash_times * INT_SIZE))
+					// {
+					// 	existed_subkeys[x].clr_idx = tmp_clrs.size();
+					// 	continue;
+					// }
+
+					tmp_min = UINT8_MAX;
+					tmpkey_ = existed_subkeys2[x].subkey;
+					max_find_dist = min_dist0 + existed_subkeys2[x].dist * 2;
+					for (int t = 0; t < tmp_clrs.size(); t++)
+					{
+						if (tmp_clrs[t].dist > max_find_dist)
+							continue;
+						tmp_d = popcount(tmp_clrs[t].node.subkey ^ tmpkey_);
+						if (tmp_d < tmp_min)
+						{
+							tmp_min = tmp_d;
+							idx = t; // cautious
+						}
+					}
+
+					if (tmp_min <= max_dist)
+					{
+						existed_subkeys2[x].max_dist = tmp_min;
+						// existed_subkeys[x].max_dist = 0;//cautious
+						// search in tmpclr[idx]
+						existed_subkeys2[x].clr_idx = idx;
+					}
+					else
+					{
+						// search in stash
+						existed_subkeys2[x].clr_idx = tmp_clrs.size(); // too minor，不要随便乱改字段意义
+					}
+				}
+				c_info.node = clr[i][clr[i].size() - 1];
+				c_info.end = sub_linear_comp[i].size();
+				c_info.dist = popcount(sub[i] ^ clr[i][clr[i].size() - 1].subkey);
+				tmp_clrs.push_back(c_info);
+
+				std::sort(existed_subkeys2.begin(), existed_subkeys2.end(), [](key_find &a, key_find &b)
+						  { return a.clr_idx < b.clr_idx; }); // times too long cautious
+
+				bool flag = true;
+				int val_idx = 0;
+				// for (; val_idx < existed_subkeys.size(); val_idx++) // auto &val : existed_subkeys
+				// {
+				// 	auto &val = existed_subkeys[val_idx];
+				// 	// if (reached_subkey.find(val.subkey) != reached_subkey.end())
+				// 	// {
+				// 	// 	val.max_dist = 0;
+				// 	// 	continue;
+				// 	// }
+				// 	if (val.clr_idx == INT16_MAX)
+				// 		continue;
+
+				// 	if (val.clr_idx == tmp_clrs.size() - 1 && flag)
+				// 	{
+				// 		// get_times(0, 3);
+				// 		flag = false;
+				// 		break; // 剩下的在stash里面查找
+				// 			   // continue;
+				// 	}
+				// 	int begin = tmp_clrs[val.clr_idx].node.begin_idx;
+				// 	int end = tmp_clrs[val.clr_idx].end;
+
+				// 	auto tmpsub1 = val.subkey;
+				// 	auto its = std::lower_bound(sub_linear_comp[i].begin() + begin, sub_linear_comp[i].begin() + end, tmpsub1, compareFirst_comp);
+				// 	if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+				// 	{
+				// 		if (its->sub_key == tmpsub1)
+				// 			val.max_dist = 0;
+				// 		// visited_subkeys.insert(its->sub_key); // why must ==? cautious
+				// 		++hitliner;
+				// 		// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
+
+				// 		// visited_keys.push_back({tmpsub1, its->skiplen, its->length}); // cautious 9-17
+
+				// 		// gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
+				// 		gen_cand_first(val, cand_first, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+				// 	}
+				// }
+				// get_times(0, 3);
+				// for (auto &tmpnode : visited_keys)
+				// {
+				// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
+				// }
+				// visited_keys.clear();
+				// get_times(0, 4);
+
+				// uint32_t mid_idx, mid_dist;
+				// for (auto &val : existed_subkeys)
+				// {
+				// 	mid_idx = -1;
+				// 	mid_dist = -1;
+				// 	tmpsub1 = val.subkey;
+
+				// 	if (val.dist == sub_hammdist[client_id][i] - 1 && val.max_dist >= max_dist) //!=0
+				// 	{
+				// 		for (auto &val1 : mid_clrs)
+				// 		{
+				// 			tmp_node = val1.node;
+				// 			begin_idx = tmp_node.begin_idx;
+				// 			end_idx = val1.end;
+				// 			uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
+				// 			if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
+				// 				continue;
+				// 			val.max_dist = tmp;
+
+				// 			auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+				// 			if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+				// 			{
+
+				// 				// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
+				// 				gen_cand_first(val, cand_first, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+				// 			}
+				// 			val.max_dist = 0; // cautious only stash later
+				// 			break;
+				// 		}
+				// 	}
+				// 	else if (val.dist == sub_hammdist[client_id][i] && val.max_dist >= (max_dist - 1)) //!=0
+				// 	{
+				// 		for (int t = 0; t < mid_clrs.size(); t++)
+				// 		{
+				// 			auto &val1 = mid_clrs[t];
+				// 			tmp_node = val1.node;
+				// 			uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
+				// 			if (tmp < mid_dist)									// find max太大可省略，是不是小于呢？
+				// 			{
+				// 				mid_idx = t;
+				// 				mid_dist = tmp;
+				// 				if (tmp == max_dist - 1)
+				// 					break;
+				// 			}
+				// 		}
+
+				// 		if (mid_dist > max_dist)
+				// 			continue;
+
+				// 		tmp_node = mid_clrs[mid_idx].node;
+				// 		begin_idx = tmp_node.begin_idx;
+				// 		end_idx = mid_clrs[mid_idx].end;
+				// 		auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+				// 		if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+				// 		{
+
+				// 			gen_cand_first(val, cand_first, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+				// 		}
+				// 		val.max_dist = 0; // cautious only stash later
+				// 	}
+				// }
+				// get_times(0, 3);
+				// for (auto &tmpnode : visited_keys)
+				// {
+				// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
+				// }
+				// visited_keys.clear();
+				// get_times(0, 4);
+
+				// uint32_t bigger_idx = 0;
+				// for (auto &val : existed_subkeys)
+				// {
+				// 	if (val.dist == sub_hammdist[client_id][i] && val.max_dist >= max_dist) //!=0
+				// 	{
+				// 		for (auto &val1 : bigger_clrs)
+				// 		{
+				// 			auto tmpsub1 = val.subkey;
+				// 			tmp_node = val1.node;
+				// 			begin_idx = tmp_node.begin_idx;
+				// 			end_idx = val1.end;
+				// 			uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
+				// 			if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
+				// 				continue;
+				// 			val.max_dist = tmp;
+
+				// 			auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+				// 			if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+				// 			{
+
+				// 				gen_cand_first(val, cand_first, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+				// 			}
+				// 			val.max_dist = 0; // cautious only stash later
+				// 			break;
+				// 		}
+				// 	}
+				// }
+				// get_times(0, 3);
+				// for (auto &tmpnode : visited_keys)
+				// {
+				// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
+				// }
+				// visited_keys.clear();
+				// get_times(0, 4);
+
+				// if (flag)
+				// 	get_times(0, 3);
+				// set before clusters
+				uint32_t dt1 = std::max(dt, (int)(max_dist - min_dist0)); // cautious
+				// val_idx = 0;
+				if (min_dist0 + sub_hammdist[client_id][i] > max_dist)
+				{
+					// min_dist = UINT16_MAX;
+					uint32_t idx1 = clr[i].size() - 1;
+					begin_idx = clr[i][idx1].begin_idx;
+					end_idx = sub_linear_comp[i].size();
+					if (begin_idx < end_idx) // cautious for stash==0
+					{
+						for (; val_idx < existed_subkeys2.size(); val_idx++) // auto &val : existed_subkeys
+						{
+							auto &val = existed_subkeys2[val_idx];
+							// if (val.clr_idx != tmp_clrs.size() - 1) // cautious
+							// 	continue;
+
+							auto &tmpsub1 = val.subkey;					   // why val.dist< is right not <
+							if (val.max_dist < max_dist || val.dist < dt1) //|| visited_subkeys.find(tmpsub1) != visited_subkeys.end() val.clr_idx != tmp_clrs.size() - 1 ||
+								continue;								   // stash只查max_dist没有减小的,==0表示已经查找到了？？cautious
+							// if (reached_subkey.find(tmpsub1) != reached_subkey.end())
+							// 	continue;
+
+							auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+							if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+							{
+								binary_times++;
+								if (its->sub_key == tmpsub1)
+									val.max_dist = 0;
+								// visited_subkeys.insert(its->sub_key); // why must ==? cautious
+								++hitliner;
+								// visited_keys.push_back({tmpsub1, its->skiplen, its->length}); // cautious 9-17
+
+								// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
+								// gen_candidate(val, candidate, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key);
+
+								gen_cand_first(val, cand_first, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+							}
+						}
+
+						// get_times(0, 3);
+						// for (auto &tmpnode : visited_keys)
+						// {
+						// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
+						// }
+						// visited_keys.clear();
+						// get_times(0, 4);
+					}
+				}
+			}
+
+		search_end1:
+			// get_times(0, 2);
+			ocall_get_timeNow(time);
+			end_time = *time;
+			find_time += end_time - begin_time;
+			ocall_get_timeNow(time);
+			begin_time = *time;
+
+			vector<sub_info_comp> tmpv;
+			std::map<uint32_t, int> tmpm;
+			// the node finded by linear list or hashmap, to get candidate's id
+
+			// candi_num += visited_keys.size();
+			// std::sort(visited_keys.begin(), visited_keys.end(), [](sub_info_comp &a, sub_info_comp &b)
+			// 		  { return a.length > b.length; });
+			reached_subkey.clear();
+			key_find tmpk{0, 0, 0};
+			// for (int y = 0; y < visited_keys.size(); y += 1)
+			// {
+			// 	auto val = reached_subkey.find(visited_keys[y].sub_key);
+			// 	if (val != reached_subkey.end() && val->second == -1)
+			// 		continue;
+			// 	gen_candidate(tmpk, candidate, visited_keys[y], tmp_visit, tmpv, i, sub[i], 100);
+			// }
+			visited_keys.clear();
+			ocall_get_timeNow(time);
+			end_time = *time;
+			insert_time += end_time - begin_time;
+		}
+		step2_flag = 0;
+		if (1)
+		{
+			x = candidate.size() + cand_set_nums;
+			if (x < 10)
+			{
+				cand_nums_set[0]++;
+			}
+			else if (x < 10000)
+			{
+				cand_nums_set[1]++;
+			}
+			else if (x < 50000)
+			{
+				cand_nums_set[2]++;
+			}
+			else if (x < 100000)
+			{
+				cand_nums_set[3]++;
+			}
+			else if (x < 200000)
+			{
+				cand_nums_set[4]++;
+			}
+			else if (x < 300000)
+			{
+				cand_nums_set[5]++;
+			}
+			else
+			{
+				cand_nums_set[6]++;
+			}
+		}
+		
+		reduce_total_num=cand_step1.size()-candidateAdd.size();
+		ocall_get_timeNow(&time_step1);
+		uint64_t esp1 = (time_step1 - time_begin) / 1e3;
+		// // auto para_opt=1.0 * (reduce_total_num*cand_set0_nums) / (esp1* cand_set2_nums);
+		// // printf("cand rate %lf data query %lf\n", dataset_size / feature_size * 1.0, (1.0 * candidate.size() / binary_times));
+		// if (!filter_query.test(query_times)) // x < thres_cand1//(1.0 * candidate.size() / binary_times) < (2 * dataset_size / feature_size * 1.0)
+		// {									 //??? >
+		// 	opt_refine++;					 //! filter_query.test(query_times)
+		// 	// step2_flag = 1;
+		// 	verifty_step = 1;
+		// } // TODO:合并上下的两次遍历
+
+		// step2_flag = 1;
+		// // // printf("----------%d %d\n", query_times, x);
+		// if (x >= thres_cand1 && x < thres_cand2)
+		// {
+		// 	step2_flag = 0;
+		// }
+		// mix += candi_set_step2.count();
+
+		for (int times = 0; times < 1; times++)
+		{
+			// if (times)
+			// {
+			// 	mix2 += candi_set_step2.count();
+			// }
+			if (verifty_step == 1)
+			{
+				verifty_step = 1;
+				// for (auto &val : cand_step1)
+				// {
+				// 	if (!candi_set.test(val))
+				// 	{
+				// 		candidate.push_back(val);
+				// 		candi_set.set(val);
+				// 	}
+				// }
+				// candidate.insert(cand_step1.begin(), cand_step1.end());
+				break;
+			}
+			if (!step2_flag && times)
+				break;
+			int i = (hammdist[client_id] - SUBINDEX_NUM + 1 - times) % SUBINDEX_NUM;
+			sub_hammdist[client_id][i] += 1;
+			// printf("%d %d\n", i,
+			// 	   sub_hammdist[client_id][i]);
+
+			ocall_get_timeNow(time);
+			begin_time = *time;
+
+			lookup_all_size = 0;
+			lookup_radius = sub_hammdist[client_id][i] + max_dist;
+			// get_times(1, 0);
+			tmp_dist = 0;
+			dt = 0;
+			tmp_visit.clear();
+			// printf("reach size %d\n", reached_subkey.size());
+			reached_subkey.clear();
+			existed_subkeys.clear();
+			tmp_clrs.clear();
+			bigger_clrs.clear();
+			mid_clrs.clear();
+			visited_keys.clear();
+
+			min_dist = UINT16_MAX;
+			// find the near clusters that may contains the subkey; hamming(subkey, query_sub_key) <= sub_hamm[i]
+			// based on triangular inequality
+			for (int t = 0; t < clr[i].size() - 1; t++)
+			{
+				begin_idx = clr[i][t].begin_idx;
+				end_idx = clr[i][t + 1].begin_idx;
+				tmp_dist = popcount(sub[i] ^ clr[i][t].subkey);
+				lookup_all_size += end_idx - begin_idx;
+
+				c_info.node = clr[i][t];
+				c_info.end = end_idx;
+				c_info.dist = tmp_dist;
+				if (tmp_dist > sub_hammdist[client_id][i] + max_dist - 2) //- 2 -1
+				{
+					if (tmp_dist == sub_hammdist[client_id][i] + max_dist - 1)
+					{
+						mid_clrs.push_back(c_info);
+					}
+					else if (tmp_dist == sub_hammdist[client_id][i] + max_dist)
+					{
+						bigger_clrs.push_back(c_info);
+						// for dist == hammdist+max_dist; it must only contains subkey whose hamm dist from cluster equals max_dist, and dist from subkey equals sub_hamm;
+						// so bigger_clrs's all dist is max_dist
+					}
+					continue;
+				}
+				tmp_clrs.push_back(c_info);
+			}
+
+			min_dist = UINT16_MAX;
+			if (tmp_clrs.size())
+			{
+				std::sort(tmp_clrs.begin(), tmp_clrs.end(), [](cluster_info &a, cluster_info &b)
+						  { if(a.dist!=b.dist)return a.dist < b.dist;else return a.node.begin_idx < b.node.begin_idx; });
+				min_dist = tmp_clrs[0].dist;
+			}
+			// min_dist = (tmp_clrs.size() > 0 ? tmp_clrs[0].dist : UINT16_MAX);
+			cluster_node tmp_node;
+
+			c_info.node = clr[i][clr[i].size() - 1];
+			c_info.end = sub_linear_comp[i].size();
+			c_info.dist = 0; // popcount(sub[i] ^ clr[i][clr[i].size() - 1].subkey);
+			tmp_clrs.push_back(c_info);
+			uint32_t tmpkey = sub[i];
+
+			for (int t = 0; t < bloom_hash_times; t += 4)
+			{
+				tmp_hash[0] = sub[i];
+				tmp_hash[1] = i + t * sub_index_num * 2;
+				MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + t * INT_SIZE);
+				// memcpy(bloom_hash + t * INT_SIZE, tmp_hash_out, std::min(bloom_hash_times - t, (uint32_t)4) * INT_SIZE);
+			}
+			if (filters->contains(bloom_hash, bloom_hash_times * INT_SIZE)) // filters.contains(bloom_hash, bloom_hash_times * INT_SIZE)
+			{
+				if (sub_hammdist[client_id][i] <= 1 && tmp_clrs.size() == 1 && mid_clrs.size()) // tmp-clrs只有stash，可以从bigger里面查找
+				{
+					tmp_node = mid_clrs[0].node;
+					begin_idx = tmp_node.begin_idx;
+					end_idx = mid_clrs[0].end;
+					auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpkey, compareFirst_comp);
+					if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpkey || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+					{
+						key_find kf{0, 0, 0};
+						// visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
+						gen_cand_first(kf, cand_first, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+					}
+				}
+				else if (sub_hammdist[client_id][i] <= 0 && tmp_clrs.size() == 1 && bigger_clrs.size()) // tmp-clrs只有stash，可以从bigger里面查找
+				{
+					for (int id = 0; id < 1; id++)
+					{
+						tmp_node = bigger_clrs[id].node;
+						begin_idx = tmp_node.begin_idx;
+						end_idx = bigger_clrs[id].end;
+						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpkey, compareFirst_comp);
+						if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpkey || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+						{
+							key_find kf{0, 0, 0};
+							// visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
+							gen_cand_first(kf, cand_first, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+						}
+					}
+				}
+				else
+				{
+					if (min_dist > max_dist)
+					{
+						tmp_min_idx = tmp_clrs.size() - 1;
+					}
+					else
+						tmp_min_idx = 0;
+					// for (int t = 0; t < tmp_clrs.size(); t++) // find 0,实际上只需要考虑stash和最近的，因为最近的一定是最小的
+					{
+						// if (tmp_clrs[t].dist > tmp_clrs[0].dist)
+						// 	break;
+						// if (tmp_clrs[t].dist > max_dist)
+						// {
+						// 	t = tmp_clrs.size() - 1;
+						// } // cautious
+						tmp_node = tmp_clrs[tmp_min_idx].node;
+						begin_idx = tmp_clrs[tmp_min_idx].node.begin_idx;
+						end_idx = tmp_clrs[tmp_min_idx].end;
+
+						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpkey, compareFirst_comp);
+						if (its < (sub_linear_comp[i].begin() + end_idx) && (its->sub_key == tmpkey || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+						{
+							key_find kf{0, 0, 0};
+							// visited_keys.push_back(sub_info_comp{tmpsub1, its->skiplen, its->length});
+							gen_cand_first(kf, cand_first, {tmpkey, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+						}
+					}
+				}
+			}
+			dt = 1; // sub[0] is finded
+			tmp_clrs.pop_back();
+			// get_times(0, 0);
+
+			uint32_t find_max_d = std::min(min_dist + sub_hammdist[client_id][i], max_dist), tmp_dist = min_dist; // 这个find-max-d是不是太大了，应该写在mindist增加之前
+
+			// for (auto val = tmp_clrs.begin(); val < tmp_clrs.end();)
+			// {
+			// 	tmp_node = val->node;
+			// 	begin_idx = val->node.begin_idx;
+			// 	end_idx = val->end;																					// get_search_numbers(sub_keybit,sub_hammdist[i])
+			// 	if ((val->dist + max_dist) <= sub_hammdist[client_id][i] || val->node.group_size < combine_clr_min) // end_idx - begin_idx < 500 (val->dist + max_dist - 1) <= sub_hammdist[i] || val->node.group_size < combine_clr_min
+			// 	{
+			// 		// linear_scan(i, begin_idx, end_idx, sub[i], sub_hammdist[client_id][i], candidate, reached_subkey);
+
+			// 		linear_scan_first(i, begin_idx, end_idx, sub[i], sub_hammdist[client_id][i], cand_first, reached_subkey, candi_first_set, candidate);
+			// 		val = tmp_clrs.erase(val);
+			// 	}
+			// 	else
+			// 		val++;
+			// }
+			get_times(0, 3);
+
+			for (int t = sub_hammdist[client_id][i]; t <= sub_hammdist[client_id][i]; t++)
+			{
+				for (auto &its : C_0_TO_subhammdis[t])
+				{
+					tmpsub1 = sub[i] ^ its;
+					sub_key_I[0] = tmpsub1, sub_key_I[1] = i;
+
+					for (int j = 0; j < bloom_hash_times; j += 4)
+					{
+						tmp_hash[0] = tmpsub1;
+						tmp_hash[1] = i + j * sub_index_num * 2;
+						MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + j * INT_SIZE);
+						// memcpy(bloom_hash + j * INT_SIZE, tmp_hash_out, std::min(bloom_hash_times - j, INT_SIZE) * INT_SIZE);
+					}
+					if (filters->contains(bloom_hash, bloom_hash_times * INT_SIZE)) // filters.contains(bloom_hash, bloom_hash_times * INT_SIZE)
+					{
+						if (reached_subkey.find(tmpsub1) == reached_subkey.end())
+						{
+							existed_subkeys.push_back(key_find{tmpsub1, (uint16_t)t, (uint16_t)find_max_d});
+						}
+					}
+				}
+			}
+
+		fetch_cand_times = existed_subkeys.size();
+		auto para_opt= (1.0 *reduce_total_num / esp1)*(fetch_cand_step1/fetch_cand_times);
+			// printf("%lf \n",para_opt);	
+		if (0) // x < thres_cand1//(1.0 * candidate.size() / binary_times) < (2 * dataset_size / feature_size * 1.0)
+		{							 //??? >
+			opt_refine++;					 //! filter_query.test(query_times)
+			step2_flag = 1;
+			verifty_step = 1;
+		} // TODO:合并上下的两次遍历
+
+		
+			// step2_flag = 1;
+			// // printf("-----   %lf \n", (1.0 * x / existed_subkeys.size()));
+			// // printf("-----   %d %d %d\n", x, existed_subkeys.size(), thres_cand1);
+			// // if (x > thres_cand1)
+			// if ((1.0 * x / existed_subkeys.size()) > (thres_cand1 * 1.0))
+			// {
+			// 	step2_flag = 0;
+			// }
+			if (step2_flag)
+			{
+				sub_hammdist[client_id][i] -= 1;
+				verifty_step = 1;
+				break;
+			}
+
+			// printf("linear size %d exist size %d clr_num%d \n", reached_subkey.size(), existed_subkeys.size(),tmp_clrs.size());
+			reached_subkey.clear();
+			// get_times(0, 1);
+
+			uint32_t min_dist0 = min_dist;
+			// uint32_t find_max_d = std::min(min_dist + sub_hammdist[i], (uint64_t)max_dist), tmp_dist = min_dist; // 这个find-max-d是不是太大了，应该写在mindist增加之前
+			min_dist += sub_hammdist[client_id][i] * 2; // cautious- 1
+			find_clrs_num += (tmp_clrs.size() ? tmp_clrs.size() : 1);
+
+			if (min_dist0 + sub_hammdist[client_id][i] > max_dist)
+			{
+				lookup_all_size + sub_linear_comp[i].size() - clr[i][clr[i].size() - 1].begin_idx;
+			}
+			if (1) // lookup_all_size >= (sub_linear_comp[i].size() >> 1) lookup_all_size >= ceil((double)sub_linear_comp[i].size() / 3)
+			{
+				uint32_t max_node = 0;
+				// for (; max_node < tmp_clrs.size(); max_node++)
+				// {
+				// 	if (tmp_clrs[max_node].dist > max_dist)
+				// 		break;
+				// }
+				for (auto tmpc = tmp_clrs.begin(); tmpc != tmp_clrs.end() && tmpc->dist <= (lookup_radius >> 1); tmpc = tmp_clrs.erase(tmpc))
+				{
+					tmp_node = tmpc->node;
+					begin_idx = tmp_node.begin_idx;
+					end_idx = tmpc->end;
+					for (int j = 0; j < existed_subkeys.size(); j++)
+					{
+						auto &val = existed_subkeys[j];
+						if (val.max_dist == 0)
+							continue;
+
+						auto &tmpsub1 = val.subkey;
+						// if (val.dist < dt) // if 的次数太多，能否优化  || visited_subkeys.find(tmpsub1) != visited_subkeys.end()
+						// 	continue;
+						uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
+						if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
+							continue;
+						val.max_dist = tmp;
+
+						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+						if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+						{
+							if (its->sub_key == tmpsub1)
+							{
+								val.max_dist = 0;
+								// val.dist = INT16_MAX;
+								val.clr_idx = INT16_MAX;
+							}
+							// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
+							gen_cand_first(val, cand_first, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+						}
+					}
+
+					// get_times(0, 3);
+					// for (auto &tmpnode : visited_keys)
+					// {
+					// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
+					// }
+					// visited_keys.clear();
+					// get_times(0, 4);
+				}
+
+				if (tmp_clrs.size())
+					std::sort(tmp_clrs.begin(), tmp_clrs.end(), [](cluster_info &a, cluster_info &b)
+							  { return a.node.begin_idx < b.node.begin_idx; });
+				uint16_t tmp_min = 0, idx = 0, tmp_d;
+				uint32_t tmpkey_, max_find_dist;
+				for (int x = 0; x < existed_subkeys.size(); x++)
+				{
+
+					if (existed_subkeys[x].clr_idx == INT16_MAX)
+						continue;
+
+					tmp_min = UINT8_MAX;
+					tmpkey_ = existed_subkeys[x].subkey;
+					max_find_dist = min_dist0 + existed_subkeys[x].dist * 2;
+					for (int t = 0; t < tmp_clrs.size(); t++)
+					{
+						if (tmp_clrs[t].dist > max_find_dist)
+							continue;
+						tmp_d = popcount(tmp_clrs[t].node.subkey ^ tmpkey_);
+						if (tmp_d < tmp_min)
+						{
+							tmp_min = tmp_d;
+							idx = t; // cautious
+						}
+					}
+
+					if (tmp_min <= max_dist)
+					{
+						existed_subkeys[x].max_dist = tmp_min;
+						// existed_subkeys[x].max_dist = 0;//cautious
+						// search in tmpclr[idx]
+						existed_subkeys[x].clr_idx = idx;
+					}
+					else
+					{
+						// search in stash
+						existed_subkeys[x].clr_idx = tmp_clrs.size(); // too minor，不要随便乱改字段意义
+					}
+				}
+				c_info.node = clr[i][clr[i].size() - 1];
+				c_info.end = sub_linear_comp[i].size();
+				c_info.dist = popcount(sub[i] ^ clr[i][clr[i].size() - 1].subkey);
+				tmp_clrs.push_back(c_info);
+
+				std::sort(existed_subkeys.begin(), existed_subkeys.end(), [](key_find &a, key_find &b)
+						  { return a.clr_idx < b.clr_idx; }); // times too long cautious
+
+				bool flag = true;
+				int val_idx = 0;
+				for (; val_idx < existed_subkeys.size(); val_idx++) // auto &val : existed_subkeys
+				{
+					auto &val = existed_subkeys[val_idx];
+					// if (reached_subkey.find(val.subkey) != reached_subkey.end())
+					// {
+					// 	val.max_dist = 0;
+					// 	continue;
+					// }
+					if (val.clr_idx == INT16_MAX)
+						continue;
+
+					if (val.clr_idx == tmp_clrs.size() - 1 && flag)
+					{
+						// get_times(0, 3);
+						flag = false;
+						break;
+						// continue;
+					}
+					int begin = tmp_clrs[val.clr_idx].node.begin_idx;
+					int end = tmp_clrs[val.clr_idx].end;
+
+					auto tmpsub1 = val.subkey;
+					auto its = std::lower_bound(sub_linear_comp[i].begin() + begin, sub_linear_comp[i].begin() + end, tmpsub1, compareFirst_comp);
+					if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+					{
+						if (its->sub_key == tmpsub1)
+							val.max_dist = 0;
+						// visited_subkeys.insert(its->sub_key); // why must ==? cautious
+						++hitliner;
+						// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
+
+						// visited_keys.push_back({tmpsub1, its->skiplen, its->length}); // cautious 9-17
+						gen_cand_first(val, cand_first, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+					}
+				}
+				// get_times(0, 3);
+				// for (auto &tmpnode : visited_keys)
+				// {
+				// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
+				// }
+				// visited_keys.clear();
+				// get_times(0, 4);
+
+				uint32_t mid_idx, mid_dist;
+				for (auto &val : existed_subkeys)
+				{
+					mid_idx = -1;
+					mid_dist = -1;
+					tmpsub1 = val.subkey;
+
+					if (val.dist == sub_hammdist[client_id][i] - 1 && val.max_dist >= max_dist) //!=0
+					{
+						for (auto &val1 : mid_clrs)
+						{
+							tmp_node = val1.node;
+							begin_idx = tmp_node.begin_idx;
+							end_idx = val1.end;
+							uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
+							if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
+								continue;
+							val.max_dist = tmp;
+
+							auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+							if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+							{
+
+								// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
+								gen_cand_first(val, cand_first, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+							}
+							val.max_dist = 0; // cautious only stash later
+							break;
+						}
+					}
+					else if (val.dist == sub_hammdist[client_id][i] && val.max_dist >= (max_dist - 1)) //!=0
+					{
+						for (int t = 0; t < mid_clrs.size(); t++)
+						{
+							auto &val1 = mid_clrs[t];
+							tmp_node = val1.node;
+							uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
+							if (tmp < mid_dist)									// find max太大可省略，是不是小于呢？
+							{
+								mid_idx = t;
+								mid_dist = tmp;
+								if (tmp == max_dist - 1)
+									break;
+							}
+						}
+
+						if (mid_dist > max_dist)
+							continue;
+
+						tmp_node = mid_clrs[mid_idx].node;
+						begin_idx = tmp_node.begin_idx;
+						end_idx = mid_clrs[mid_idx].end;
+						auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+						if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+						{
+
+							gen_cand_first(val, cand_first, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+						}
+						val.max_dist = 0; // cautious only stash later
+					}
+				}
+				// get_times(0, 3);
+				// for (auto &tmpnode : visited_keys)
+				// {
+				// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
+				// }
+				// visited_keys.clear();
+				// get_times(0, 4);
+
+				uint32_t bigger_idx = 0;
+				for (auto &val : existed_subkeys)
+				{
+					if (val.dist == sub_hammdist[client_id][i] && val.max_dist >= max_dist) //!=0
+					{
+						for (auto &val1 : bigger_clrs)
+						{
+							auto tmpsub1 = val.subkey;
+							tmp_node = val1.node;
+							begin_idx = tmp_node.begin_idx;
+							end_idx = val1.end;
+							uint16_t tmp = popcount(tmp_node.subkey ^ tmpsub1); // 开销很大？？
+							if (tmp > val.max_dist)								// find max太大可省略，是不是小于呢？
+								continue;
+							val.max_dist = tmp;
+
+							auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+							if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+							{
+
+								gen_cand_first(val, cand_first, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+							}
+							val.max_dist = 0; // cautious only stash later
+							break;
+						}
+					}
+				}
+				// get_times(0, 3);
+				// for (auto &tmpnode : visited_keys)
+				// {
+				// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
+				// }
+				// visited_keys.clear();
+				// get_times(0, 4);
+
+				// if (flag)
+				// 	get_times(0, 3);
+				// set before clusters
+				uint32_t dt1 = std::max(dt, (int)(max_dist - min_dist0)); // cautious
+				if (min_dist0 + sub_hammdist[client_id][i] > max_dist)
+				{
+					// min_dist = UINT16_MAX;
+					uint32_t idx1 = clr[i].size() - 1;
+					begin_idx = clr[i][idx1].begin_idx;
+					end_idx = sub_linear_comp[i].size();
+					if (begin_idx < end_idx) // cautious for stash==0
+					{
+						for (; val_idx < existed_subkeys.size(); val_idx++) // auto &val : existed_subkeys
+						{
+							auto &val = existed_subkeys[val_idx];
+							auto &tmpsub1 = val.subkey;					   // why val.dist< is right not <
+							if (val.max_dist < max_dist || val.dist < dt1) //|| visited_subkeys.find(tmpsub1) != visited_subkeys.end() val.clr_idx != tmp_clrs.size() - 1 ||
+								continue;								   // stash只查max_dist没有减小的,==0表示已经查找到了？？cautious
+							// if (reached_subkey.find(tmpsub1) != reached_subkey.end())
+							// 	continue;
+
+							auto its = std::lower_bound(sub_linear_comp[i].begin() + begin_idx, sub_linear_comp[i].begin() + end_idx, tmpsub1, compareFirst_comp);
+							if (its != sub_linear_comp[i].end() && (its->sub_key == tmpsub1 || its->length & MASK_INF)) //&& its->sub_key == tmpsub1
+							{
+								fetch_cand_times++;
+								if (its->sub_key == tmpsub1)
+									val.max_dist = 0;
+								// visited_subkeys.insert(its->sub_key); // why must ==? cautious
+								++hitliner;
+								// visited_keys.push_back({tmpsub1, its->skiplen, its->length}); // cautious 9-17
+
+								// visited_keys.push_back(fetch_ids_node{sub_info_comp{tmpsub1, its->skiplen, its->length}, val, its->sub_key});
+
+								gen_cand_first(val, cand_first, {tmpsub1, its->skiplen, its->length}, tmp_visit, i, sub[i], dt + 1, its->sub_key, candidate);
+							}
+						}
+
+						// get_times(0, 3);
+						// for (auto &tmpnode : visited_keys)
+						// {
+						// 	gen_candidate(tmpnode.kf, candidate, tmpnode.sub_info, tmp_visit, i, sub[i], dt + 1, tmpnode.cache_key);
+						// }
+						// visited_keys.clear();
+						// get_times(0, 4);
+					}
+				}
+			}
+
+			get_times(0, 2);
+			ocall_get_timeNow(time);
+			end_time = *time;
+			find_time += end_time - begin_time;
+			ocall_get_timeNow(time);
+			begin_time = *time;
+
+			vector<sub_info_comp> tmpv;
+			std::map<uint32_t, int> tmpm;
+			// the node finded by linear list or hashmap, to get candidate's id
+
+			// candi_num += visited_keys.size();
+			// std::sort(visited_keys.begin(), visited_keys.end(), [](sub_info_comp &a, sub_info_comp &b)
+			// 		  { return a.length > b.length; });
+			reached_subkey.clear();
+			visited_keys.clear();
+			ocall_get_timeNow(time);
+			end_time = *time;
+			insert_time += end_time - begin_time;
+
+			sub_hammdist[client_id][i] -= 1;
+		}
 	}
 	// printf("%d hitt %d misss\n", hittt, misss);
 	// printf("bloomHit:%lu bloomMiss:%lu sum%d\n", hitliner+hitmap, bloomMiss, hitliner+hitmap+bloomMiss);
@@ -1074,81 +2402,178 @@ std::vector<uint32_t> containers::find_sim(uint64_t query[], uint32_t tmp_test_t
 	static uint32_t unequal = 0;
 	static uint32_t unequal_n = 0;
 
-	// ocall_get_timeNow(time);
+	ocall_get_timeNow(time);
 	begin_time = *time;
 	uint64_t cmp_hamm[2] = {0};
 	uint64_t count = 0;
 	vector<uint32_t> res_id;
 	res_id.reserve(5000);
 	information got_out;
-	// tsl::hopscotch_map<uint32_t,information>::const_iterator got_out;
-	// candi_num += candidate.size();
+	// candi_num += candidate2.size() + candidateAdd.size();
+
+	candi_num += candidate.size();
+	if (verifty_step)
+		candi_num += cand_step1.size();
+	else
+		candi_num += candidateAdd.size();
+	if (candidate.size() < 10)
+	{
+		cand_nums[0]++;
+	}
+	else if (candidate.size() < 100)
+	{
+		cand_nums[1]++;
+	}
+	else if (candidate.size() < 1000)
+	{
+		cand_nums[2]++;
+	}
+	else if (candidate.size() < 10000)
+	{
+		cand_nums[3]++;
+	}
+	else if (candidate.size() < 50000)
+	{
+		cand_nums[4]++;
+	}
+	else if (candidate.size() < 100000)
+	{
+		cand_nums[5]++;
+	}
+	else
+		cand_nums[6]++;
+
+	hittt += candidate2.size() + candidateAdd.size();
+	misss += candidate.size();
+	// printf("htu  %d   miss %d\n", hittt, misss);
+	// -- -- -- -- -
+
+	// 使用push_back插入Record实例
+	// record_info.push_back({fetch_cand_times, query_times, candidate.size(), candidate2.size() + candidateAdd.size(),
+	// 					   candidate.size() - candidate2.size() - candidateAdd.size(),
+	// 					   1.0 * (candidate.size() - candidate2.size() - candidateAdd.size()) / fetch_cand_times});
+
+	// printf("----size %d-----query %d candidate %d candi2 %d sub-nums %d rate %lf\n", fetch_cand_times, query_times, candidate.size(),
+	// 	   candidate2.size() + candidateAdd.size(), candidate.size() - candidate2.size() - candidateAdd.size(),
+	// 	   1.0 * (candidate.size() - candidate2.size() - candidateAdd.size()) / fetch_cand_times);
+
 	for (auto it = candidate.begin(); it != candidate.end();)
 	{
-		if (*it < full_index.size())
-			got_out = full_index[*it];
+		// if (*it < full_index.size())
+		auto got_out = full_key_sorted[*it];
 		if (1)
 		{
-			get_full_fingerprint32(tmp_fullkey, (uint32_t *)&full_index[*it]);
-			cmp_hamm[0] = query[0] ^ (tmp_fullkey[0]);
-			cmp_hamm[1] = query[1] ^ (tmp_fullkey[1]);
+			// get_full_fingerprint32(tmp_fullkey, (uint32_t *)&full_index[*it]);
+			cmp_hamm[0] = query[0] ^ (got_out.fullkey[0]);
+			cmp_hamm[1] = query[1] ^ (got_out.fullkey[1]);
 			count = popcount(cmp_hamm[0]) + popcount(cmp_hamm[1]);
 			// count = bitset<64>(cmp_hamm[0]).count() + bitset<64>(cmp_hamm[1]).count();
 
-			candi_num += full_index[*it + fullkey_len].len; // cautious caluate for candidate images
+			// candi_num += full_index[*it + fullkey_len].len; // cautious caluate for candidate images
 			if (count <= hammdist[client_id])
 			{
-				successful_num += full_index[*it + fullkey_len].len;
+				res_id.push_back(got_out.identify);
+
+				// printf("target %d\n", got_out.identify);
+				successful_num++;
+				// successful_num += full_index[*it + fullkey_len].len;
 
 				out_tmp = out;
-				uint8_t *comp_data = (uint8_t *)&full_index[*it + fullkey_len + 1];
-				if (full_index[*it + fullkey_len].len <= COMPRESS_MIN_UNSORT)
+				if (got_out.target == tmp_test_target)
 				{
-					// uint32_t test_target = 0;
-					out_tmp = (uint32_t *)&full_index[*it + fullkey_len + 1];
-					// 测试获取的图片对应的id
-					for (int j = 0; j < full_index[*it + fullkey_len].len; j++)
-					{
-						res_id.push_back(out_tmp[j]);
-						test_target += out_tmp[j];
-					}
+					hit_succ_num++;
+					// equal = 1;
 				}
 				else
-				{
-					// uint32_t test_target = 0;
-					for_uncompress(comp_data, out_tmp, full_index[*it + fullkey_len].len);
-					// 测试获取的图片对应的id
-					for (int j = 0; j < full_index[*it + fullkey_len].len; j++)
-					{
-						res_id.push_back(out_tmp[j]);
-						test_target += out_tmp[j];
-					}
-				}
-
-				it++;
+					false_num++;
+				// it++;
 			}
-			else
-				it = candidate.erase(it);
+			// else
+			// 	it = candidate.erase(it);
+			it++;
 		}
 	}
+	if (verifty_step)
+	{
+		for (auto it = cand_step1.begin(); it != cand_step1.end(); it++)
+		{
+			// if (candi_set.test(*it))
+			// 	continue;
+			auto got_out = full_key_sorted[*it];
+			// get_full_fingerprint32(tmp_fullkey, (uint32_t *)&full_index[*it]);
+			cmp_hamm[0] = query[0] ^ (got_out.fullkey[0]);
+			cmp_hamm[1] = query[1] ^ (got_out.fullkey[1]);
+			count = popcount(cmp_hamm[0]) + popcount(cmp_hamm[1]);
+			// count = bitset<64>(cmp_hamm[0]).count() + bitset<64>(cmp_hamm[1]).count();
+
+			// candi_num += full_index[*it + fullkey_len].len; // cautious caluate for candidate images
+			if (count <= hammdist[client_id])
+			{
+				res_id.push_back(got_out.identify);
+
+				// printf("target %d\n", got_out.identify);
+				successful_num++;
+				// successful_num += full_index[*it + fullkey_len].len;
+
+				out_tmp = out;
+				if (got_out.target == tmp_test_target)
+				{
+					hit_succ_num++;
+					// equal = 1;
+				}
+				else
+					false_num++;
+			}
+		}
+	}
+	else
+	{
+		for (auto it = candidateAdd.begin(); it != candidateAdd.end(); it++)
+		{
+			auto got_out = full_key_sorted[*it];
+			cmp_hamm[0] = query[0] ^ (got_out.fullkey[0]);
+			cmp_hamm[1] = query[1] ^ (got_out.fullkey[1]);
+			count = popcount(cmp_hamm[0]) + popcount(cmp_hamm[1]);
+
+			if (count <= hammdist[client_id])
+			{
+				res_id.push_back(got_out.identify);
+
+				successful_num++;
+				out_tmp = out;
+				if (got_out.target == tmp_test_target)
+				{
+					hit_succ_num++;
+				}
+				else
+					false_num++;
+			}
+		}
+	}
+
 	// printf("targste %d\n", tmp_test_target);
 	// printf("%d unequal %d\n", unequal, unequal_n);
-
+	if (equal)
+	{
+		hit_succ_num++;
+	}
+	ocall_get_timeNow(time);
 	end_time = *time;
 	verify_time += end_time - begin_time;
-	// ocall_get_timeNow(total_time_now);
+	ocall_get_timeNow(total_time_now);
 	total_end_time = *total_time_now;
 	total_time += total_end_time - total_begin_time;
 	return std::move(res_id);
 }
-void containers::gen_candidate(key_find &find_key, std::unordered_set<uint32_t> &cand, sub_info_comp comp, vector<sub_info_comp> &tmp_keys,
-							   uint32_t i, uint32_t subkey, uint32_t dt, uint32_t cache_key)
+
+void containers::gen_cand_first(key_find &find_key, std::unordered_set<uint32_t> &cand_first, sub_info_comp comp, vector<sub_info_comp> &tmp_keys,
+								uint32_t i, uint32_t subkey, uint32_t dt, uint32_t cache_key, std::vector<uint32_t> &cand)
 {
+
 	times_gen++;
 	uint8_t *tmp_ids_block;
 	uint64_t key = ((uint64_t)i << 32) | cache_key;
 
-// if (val != data_cache.end())combs_hit += val->second->key;
 #if CACHE_SIZE >= 500000
 	auto val = data_cache.find(key);
 	if (val != data_cache.end())
@@ -1175,19 +2600,181 @@ void containers::gen_candidate(key_find &find_key, std::unordered_set<uint32_t> 
 	}
 	lru_mtx.unlock();
 #endif
-	// auto val = data_cache[i].find(comp.skiplen);
-	// if (val != data_cache[i].end())
-	// {
-	// 	tmp_ids_block = val->second.data();
-	// }
-	// else
-	// {
-	// 	vector<uint8_t> tmp_ids;
-	// 	tmp_ids.resize(comp.length & 0x3fffffff);
-	// 	dec_page_block(id_point[i] + comp.skiplen, comp.length & 0x3fffffff, tmp_ids.data());
-	// 	tmp_ids_block = tmp_ids.data();
-	// 	data_cache[i].emplace(comp.skiplen, std::move(tmp_ids));
-	// }
+	uint32_t tempKey = comp.sub_key;
+	uint32_t tmp_size = 0;
+	int tmp_begin = 0;
+	bool is_combined_keys = false;
+
+	auto out_tmp = out;
+	// if (tmp_begin < 0) ,some continuous  subkeys are Combined to one biggest subkey in there
+	if (comp.length & MASK_INF)
+	{
+		is_combined_keys = true;
+	}
+	out_tmp = (uint32_t *)tmp_ids_block;
+	tmp_size = comp.length; //*((uint32_t *)&tmp_ids_block[tmp_begin]);
+
+	// get the true identifiers of the subkey
+	if (is_combined_keys)
+	{
+		combs++;
+		uint32_t lens = 0;
+
+		// out_tmp结构:[keys_len, subkey0,...,subkeyN,-id0,id1,-id4,id8,...,idm]
+		// keys_len: 这个block里面subkey的数量，subkey：这个block里面包含的subkey，所有subkey在排列在一起
+		// id：前面subkey对应的图片id集合，按照subkey的先后顺序，每个subkey对应一个id序列，这个id序列开头为-id，以表示开始一个新的序列
+		uint32_t keys_len = out_tmp[0];
+		// printf("keys_len %d\n", keys_len);
+		// out_tmp结构:[subkey0,len0,id0,id1,...,subkey1,len1,id0,id1,...]
+		tmp_size = *((uint32_t *)&tmp_ids_block[0]);
+		for (int j = 1; j < tmp_size;)
+		{
+			if (out_tmp[j] == tempKey)
+			{
+				find_key.clr_idx = INT16_MAX;
+				// reached_subkey[comp.sub_key] = -1;
+				find_key.max_dist = 0;
+				j++;
+				uint32_t len = out_tmp[j];
+				for (int l = j + 1; l <= j + len; l++)
+				{
+					// if (cand_first.find(out_tmp[l]) != cand_first.end())
+					// 	cand.emplace_back( out_tmp[l]);
+					// else
+					// 	cand_first.emplace_hint(cand_first.begin(), out_tmp[l]);
+					// if (step2_flag)
+					// {
+					// 	if (!candi_set.test(out_tmp[l]))
+					// 	{
+					// 		cand.emplace_back(out_tmp[l]);
+					// 		candi_set.set(out_tmp[l]);
+					// 	}
+					// 	// if (candi_set_step2.test(out_tmp[l]) && !candi_set.test(out_tmp[l]))
+					// 	// {
+					// 	// 	cand.emplace_back(out_tmp[l]);
+					// 	// 	candi_set.set(out_tmp[l]);
+					// 	// }
+					// 	// if (candi_first_set.test(out_tmp[l]))
+					// 	// 	candi_set_step2.set(out_tmp[l]);
+					// }
+					// else
+					{
+						if (!candi_set.test(out_tmp[l]))
+						{
+							if (candi_first_set.test(out_tmp[l]))
+							{
+								candidateAdd.emplace_back(out_tmp[l]); // cautious
+								// cand.emplace_back(out_tmp[l]);
+								candi_set.set(out_tmp[l]);
+							}
+							else
+							{
+								// if (i == (hammdist[client_id] - SUBINDEX_NUM) % SUBINDEX_NUM)
+								// {
+								// 	candi_set_step2.set(out_tmp[l]);
+								// }
+								candi_first_set.set(out_tmp[l]);
+								cand_step1.push_back(out_tmp[l]);
+								cand_set_nums++;
+							}
+						}
+					}
+					lens++;
+				}
+				j += out_tmp[j] + 1;
+				break;
+			}
+			else
+			{
+				j += out_tmp[j + 1] + 2;
+			}
+		}
+	}
+	else
+	{
+		// reached_subkey[comp.sub_key] = -1;
+		find_key.max_dist = 0;
+		find_key.clr_idx = INT16_MAX;
+		for (int j = 0; j < tmp_size; j++)
+		{
+			// if (step2_flag)
+			// {
+			// 	if (!candi_set.test(out_tmp[j]))
+			// 	{
+			// 		cand.emplace_back(out_tmp[j]);
+			// 		candi_set.set(out_tmp[j]);
+			// 	}
+			// 	// if (candi_set_step2.test(out_tmp[j]) && !candi_set.test(out_tmp[j]))
+			// 	// {
+			// 	// 	cand.emplace_back(out_tmp[j]);
+			// 	// 	candi_set.set(out_tmp[j]);
+			// 	// }
+			// 	// if (candi_first_set.test(out_tmp[j]))
+			// 	// 	candi_set_step2.set(out_tmp[j]);
+			// }
+			// else
+			{
+				if (!candi_set.test(out_tmp[j]))
+				{
+					if (candi_first_set.test(out_tmp[j]))
+					{
+						candidateAdd.emplace_back(out_tmp[j]);
+						// cand.emplace_back(out_tmp[j]);
+						candi_set.set(out_tmp[j]);
+					}
+					else
+					{
+						// if (i == (hammdist[client_id] - SUBINDEX_NUM) % SUBINDEX_NUM)
+						// {
+						// 	candi_set_step2.set(out_tmp[j]);
+						// }
+						candi_first_set.set(out_tmp[j]);
+						cand_step1.push_back(out_tmp[j]);
+						cand_set_nums++;
+					}
+				}
+			}
+			// if (cand_first.find(out_tmp[j]) != cand_first.end())
+			// 	cand.emplace_back( out_tmp[j]);
+			// else
+			// 	cand_first.emplace_hint(cand_first.begin(), out_tmp[j]);
+		}
+	}
+}
+
+void containers::gen_candidate(key_find &find_key, std::vector<uint32_t> &cand, sub_info_comp comp, vector<sub_info_comp> &tmp_keys,
+							   uint32_t i, uint32_t subkey, uint32_t dt, uint32_t cache_key)
+{
+	times_gen++;
+	uint8_t *tmp_ids_block;
+	uint64_t key = ((uint64_t)i << 32) | cache_key;
+
+#if CACHE_SIZE >= 500000
+	auto val = data_cache.find(key);
+	if (val != data_cache.end())
+	{
+		tmp_ids_block = val->second->ids.data();
+		// lru_ids_visit(key, val->second);
+	}
+	else
+	{
+		// tmp_ids_block = lru_ids_add(key, i, comp);
+	}
+
+#else
+	lru_mtx.lock();
+	auto val = data_cache.find(key);
+	if (val != data_cache.end())
+	{
+		tmp_ids_block = val->second->ids.data();
+		lru_ids_visit(key, val->second);
+	}
+	else
+	{
+		tmp_ids_block = lru_ids_add(key, i, comp);
+	}
+	lru_mtx.unlock();
+#endif
 
 	// dec_page_block(id_point[i] + comp.skiplen, comp.length & 0x3fffffff, tmp_ids_block); // tmp_ids_block max=1024 * 300
 	// tmp_ids_block = id_point[i] + comp.skiplen;
@@ -1205,33 +2792,7 @@ void containers::gen_candidate(key_find &find_key, std::unordered_set<uint32_t> 
 	}
 	out_tmp = (uint32_t *)tmp_ids_block;
 	tmp_size = comp.length; //*((uint32_t *)&tmp_ids_block[tmp_begin]);
-							/*	if ((int)tmp_size < 0)
-								{
-									tmp_begin += sizeof(uint32_t);
-									tmp_size = *((uint32_t *)&tmp_ids_block[tmp_begin]);
-								}
-						
-								// 解压，如果多个subkey是被合并后的，is-combine=true；解压的是unsort数组；否则解压产生sorted数组
-								if (!is_combined_keys)
-								{
-									if (tmp_size <= COMPRESS_MIN)
-									{
-										out_tmp = (uint32_t *)(tmp_ids_block + tmp_begin + 4);
-									}
-									else
-									{
-										for_uncompress(tmp_ids_block + tmp_begin + 4, out_tmp, tmp_size); // decompress
-																										  //   printf("tmp_size: %u\n", tmp_size);
-									}
-								}
-								else
-								{
-									if (tmp_size <= COMPRESS_MIN_UNSORT)
-										out_tmp = (uint32_t *)(tmp_ids_block + tmp_begin + 4);
-									else
-										for_uncompress(tmp_ids_block + tmp_begin + 4, out_tmp, tmp_size); // decompress
-								}
-							*/
+
 	// get the true identifiers of the subkey
 	if (is_combined_keys)
 	{
@@ -1243,33 +2804,6 @@ void containers::gen_candidate(key_find &find_key, std::unordered_set<uint32_t> 
 		// id：前面subkey对应的图片id集合，按照subkey的先后顺序，每个subkey对应一个id序列，这个id序列开头为-id，以表示开始一个新的序列
 		uint32_t keys_len = out_tmp[0];
 		// printf("keys_len %d\n", keys_len);
-
-		// auto x = std::lower_bound(out_tmp + 1, out_tmp + 1 + keys_len, tempKey);
-		// if (x != out_tmp + 1 + keys_len && *x == tempKey)
-		// {
-		// 	uint32_t times = (x - out_tmp);
-		// 	for (int t = 1 + keys_len; t < tmp_size; t++)
-		// 	{
-		// 		if ((int)out_tmp[t] < 0)
-		// 		{
-		// 			times--;
-		// 			if (times == 0)
-		// 			{
-		// 				find_key.max_dist = 0;
-		// 				reached_subkey[comp.sub_key] = -1;
-		// 				combs_hit++;
-		// 				cand.emplace_hint(cand.begin(), -out_tmp[t] - 1);
-		// 				for (int l = t + 1; l < tmp_size; l++)
-		// 				{
-		// 					if ((int)out_tmp[l] < 0)
-		// 						break;
-		// 					cand.emplace_hint(cand.begin(), out_tmp[l]);
-		// 				}
-		// 				break;
-		// 			}
-		// 		}
-		// 	}
-		// }
 
 		// out_tmp结构:[subkey0,len0,id0,id1,...,subkey1,len1,id0,id1,...]
 		tmp_size = *((uint32_t *)&tmp_ids_block[0]);
@@ -1284,7 +2818,11 @@ void containers::gen_candidate(key_find &find_key, std::unordered_set<uint32_t> 
 				uint32_t len = out_tmp[j];
 				for (int l = j + 1; l <= j + len; l++)
 				{
-					cand.emplace_hint(cand.begin(), out_tmp[l]);
+					if (!candi_set.test(out_tmp[l]))
+					{
+						cand.emplace_back(out_tmp[l]);
+						candi_set.set(out_tmp[l]);
+					}
 					lens++;
 				}
 				j += out_tmp[j] + 1;
@@ -1295,35 +2833,6 @@ void containers::gen_candidate(key_find &find_key, std::unordered_set<uint32_t> 
 				j += out_tmp[j + 1] + 2;
 			}
 		}
-
-		// for (int j = 1; j <= keys_len; j++)
-		// {
-		// 	if (out_tmp[j] > tempKey)
-		// 		break;
-		// 	else if (out_tmp[j] == tempKey)
-		// 	{
-		// 		uint32_t times = j;
-		// 		for (int t = 1 + keys_len; t < tmp_size; t++)
-		// 		{
-		// 			if ((int)out_tmp[t] < 0)
-		// 			{
-		// 				times--;
-		// 				if (times == 0)
-		// 				{
-		// 					cand.emplace_hint(cand.begin(), -out_tmp[t]);
-		// 					for (int l = t + 1; l < tmp_size; l++)
-		// 					{
-		// 						if ((int)out_tmp[l] < 0)
-		// 							break;
-		// 						cand.emplace_hint(cand.begin(), out_tmp[l]);
-		// 					}
-		// 					break;
-		// 				}
-		// 			}
-		// 		}
-		// 		break;
-		// 	}
-		// }
 	}
 	else
 	{
@@ -1332,13 +2841,19 @@ void containers::gen_candidate(key_find &find_key, std::unordered_set<uint32_t> 
 		find_key.clr_idx = INT16_MAX;
 		for (int j = 0; j < tmp_size; j++)
 		{
-			cand.emplace_hint(cand.begin(), out_tmp[j]);
+			if (!candi_set.test(out_tmp[j]))
+			{
+				cand.emplace_back(out_tmp[j]);
+				candi_set.set(out_tmp[j]);
+			}
+			// cand.emplace_back( out_tmp[j]);
 		}
 	}
 }
-void containers::linear_scan(uint32_t i, uint32_t begin, uint32_t end, uint32_t subkey, uint32_t hammdist,
-							 unordered_set<uint32_t> &candidate, std::unordered_map<uint32_t, int> &reached_subkey)
+void containers::linear_scan(uint32_t client, uint32_t i, uint32_t begin, uint32_t end, uint32_t subkey, uint32_t hamm,
+							 vector<uint32_t> &candidate, std::unordered_map<uint32_t, int> &reached_subkey)
 {
+
 	sub_info_comp tmp_info;
 	uint8_t *tmp_ids_block;
 	for (uint32_t c = begin; c < end; c++)
@@ -1426,54 +2941,24 @@ void containers::linear_scan(uint32_t i, uint32_t begin, uint32_t end, uint32_t 
 				combs++;
 				uint32_t lens = 0;
 
-				// // out_tmp结构:[keys_len, subkey0,...,subkeyN,-id0,id1,-id4,id8,...,idm]
-				// // keys_len: 这个block里面subkey的数量，subkey：这个block里面包含的subkey，所有subkey在排列在一起
-				// // id：前面subkey对应的图片id集合，按照subkey的先后顺序，每个subkey对应一个id序列，这个id序列开头为-id，以表示开始一个新的序列
-				// uint32_t keys_len = out_tmp[0];
-				// // printf("keys_len %d\n", keys_len);
-
-				// int ids_begin = 1 + keys_len;
-
-				// for (int j = 1; j <= keys_len; j++)
-				// {
-				// 	// if ((int)out_tmp[ids_begin] >= 0)
-				// 	// 	printf("id %d %d %d size%d\n", out_tmp[ids_begin], ids_begin, 1 + keys_len, tmp_size);
-				// 	if (popcount(out_tmp[j] ^ subkey) <= hammdist)
-				// 	{
-				// 		reached_subkey[out_tmp[j]] = -1;
-				// 		uint32_t times = j;
-				// 		// if ((int)out_tmp[ids_begin] >= 0)
-				// 		// 	printf("id %d %d %d\n", out_tmp[ids_begin], ids_begin, 1 + keys_len);
-				// 		candidate.emplace_hint(candidate.begin(), -out_tmp[ids_begin] - 1);
-				// 		ids_begin++;
-				// 		for (; ids_begin < tmp_size && ((int)out_tmp[ids_begin]) >= 0; ids_begin++)
-				// 		{
-				// 			candidate.emplace_hint(candidate.begin(), out_tmp[ids_begin]);
-				// 		}
-				// 		// break;
-				// 	}
-				// 	else
-				// 	{
-				// 		// candidate.emplace_hint(candidate.begin(), -out_tmp[ids_begin] - 1);
-				// 		for (ids_begin++; ids_begin < tmp_size && ((int)out_tmp[ids_begin]) >= 0; ids_begin++)
-				// 			; // 	{
-				// 			  // 	candidate.emplace_hint(candidate.begin(), out_tmp[ids_begin]);
-				// 			  // };
-				// 	}
-				// }
-
 				tmp_size = *((uint32_t *)&tmp_ids_block[0]);
 				;
 				for (int j = 1; j < tmp_size;)
 				{
-					if (popcount(out_tmp[j] ^ subkey) <= hammdist)
+					auto dis = popcount(out_tmp[j] ^ subkey);
+					if (dis <= hamm)
 					{
 						j++;
 						uint32_t len = out_tmp[j];
 						reached_subkey[out_tmp[j - 1]] = -1;
 						for (int l = j + 1; l <= j + len; l++)
 						{
-							candidate.emplace_hint(candidate.begin(), out_tmp[l]);
+							if (!candi_set.test(out_tmp[l]))
+							{
+								candidate.emplace_back(out_tmp[l]);
+								candi_set.set(out_tmp[l]);
+							}
+							// candidate.emplace_back(candidate.begin(), out_tmp[l]);
 							lens++;
 						}
 						j += out_tmp[j] + 1;
@@ -1493,13 +2978,14 @@ void containers::linear_scan(uint32_t i, uint32_t begin, uint32_t end, uint32_t 
 			// 	find_key.max_dist = 0;
 			// 	for (int j = 0; j < tmp_size; j++)
 			// 	{
-			// 		cand.emplace_hint(cand.begin(), out_tmp[j]);
+			// 		cand.emplace_back( out_tmp[j]);
 			// 	}
 			// }
 		}
 		else
 		{
-			if (popcount(tmp_info.sub_key ^ subkey) <= hammdist)
+			auto dis = popcount(tmp_info.sub_key ^ subkey);
+			if (dis <= hamm)
 			{
 				key_find kf{0, 0, 0};
 				reached_subkey[tmp_info.sub_key] = -1;
@@ -1508,11 +2994,175 @@ void containers::linear_scan(uint32_t i, uint32_t begin, uint32_t end, uint32_t 
 
 				// visited_keys.push_back(tmp_info);
 			}
+			// else if (dis == hamm + 1 && hamm < sub_hammdist[client][i])
+			// {
+			// 	key_find kf{0, 0, 0};
+			// 	reached_subkey[tmp_info.sub_key] = -1;
+			// 	gen_cand_first(kf, candidate, {tmp_info.sub_key, tmp_info.skiplen, tmp_info.length}, tmp_visit, i, subkey, 0, tmp_info.sub_key, candidate);
+			// }
 		}
 	}
 }
+
+template <size_t T>
+void containers::linear_scan_first(uint32_t i, uint32_t begin, uint32_t end, uint32_t subkey, uint32_t sub_hammdist,
+								   unordered_set<uint32_t> &cand_first, std::unordered_map<uint32_t, int> &reached_subkey, bitset<T> &cand_set, std::vector<uint32_t> &cand)
+{
+	sub_info_comp tmp_info;
+	uint8_t *tmp_ids_block;
+	for (uint32_t c = begin; c < end; c++)
+	{
+		tmp_info = sub_linear_comp[i][c];
+		if (tmp_info.length & MASK_INF)
+		{
+			// tmp_info.sub_key = subkey;
+			// key_find kf{sub_linear_comp[i][c].sub_key,10,10};
+			// //gen_candidate(kf,candidate,tmp_info,visited_keys,visited_keys,i,subkey,0);
+			times_gen++;
+
+			uint64_t key = ((uint64_t)i << 32) | tmp_info.sub_key;
+// if (val != data_cache.end())combs_hit += val->second->key;
+#if CACHE_SIZE >= 500000
+			auto val = data_cache.find(key);
+			if (val != data_cache.end())
+			{
+				tmp_ids_block = val->second->ids.data();
+				// lru_ids_visit(key, val->second);
+			}
+			else
+			{
+				// tmp_ids_block = lru_ids_add(key, i, tmp_info);
+			}
+#else
+			lru_mtx.lock();
+			auto val = data_cache.find(key);
+			if (val != data_cache.end())
+			{
+				tmp_ids_block = val->second->ids.data();
+				lru_ids_visit(key, val->second);
+			}
+			else
+			{
+				tmp_ids_block = lru_ids_add(key, i, tmp_info);
+			}
+			lru_mtx.unlock();
+#endif
+			// tmp_ids_block = id_point[i] + tmp_info.skiplen;
+			uint32_t tempKey = subkey;
+			uint32_t tmp_size = 0;
+			int tmp_begin = 0;
+			bool is_combined_keys = false;
+
+			auto out_tmp = out;
+			// printf("test first byte %d\n", tmp_ids_block[0]);
+			out_tmp = (uint32_t *)tmp_ids_block;
+			// (tmp_begin < 0) ,some continuous  subkeys are Combined to one biggest subkey in there
+			// if (tmp_info.length & MASK_INF)
+			{
+				is_combined_keys = true;
+			}
+			// bitset<DATA_LEN * 10> set2;
+			// get the true identifiers of the subkey
+			if (is_combined_keys)
+			{
+				combs++;
+				uint32_t lens = 0;
+				tmp_size = *((uint32_t *)&tmp_ids_block[0]);
+				;
+				// printf("tmp %d %d\n", tmp_size, tmp_size);
+				for (int j = 1; j < tmp_size;)
+				{
+					if (popcount(out_tmp[j] ^ subkey) == sub_hammdist)
+					{
+						j++;
+						uint32_t len = out_tmp[j];
+						reached_subkey[out_tmp[j - 1]] = -1;
+						for (int l = j + 1; l <= j + len; l++)
+						{
+							// printf("%d\n", out_tmp[l]);
+							// if (!cand_set.test(out_tmp[l]))
+							// {
+							// 	candidate.push_back(out_tmp[l]);
+							// 	cand_set.set(out_tmp[l]);
+							// }
+
+							if (step2_flag)
+							{
+								if (!candi_set.test(out_tmp[l]))
+								{
+									cand.emplace_back(out_tmp[l]);
+									candi_set.set(out_tmp[l]);
+								}
+								// if (candi_set_step2.test(out_tmp[l]))
+								// 	cand.emplace_back(out_tmp[l]);
+								// if (candi_first_set.test(out_tmp[l]))
+								// 	candi_set_step2.set(out_tmp[l]);
+							}
+							else
+							{
+								if (!candi_set.test(out_tmp[l]))
+								{
+									if (candi_first_set.test(out_tmp[l]))
+									{
+										cand.emplace_back(out_tmp[l]);
+										candi_set.set((out_tmp[l]));
+									}
+									else
+									{
+										// if (i == (hammdist[client_id] - SUBINDEX_NUM) % SUBINDEX_NUM)
+										// {
+										// 	candi_set_step2.set(out_tmp[l]);
+										// }
+										candi_first_set.set(out_tmp[l]);
+										cand_step1.push_back(out_tmp[l]);
+										cand_set_nums++;
+									}
+								}
+							}
+							// if (out_tmp[l] < set2.size())
+							// 	set2.set(out_tmp[l]);
+							lens++;
+						}
+						j += out_tmp[j] + 1;
+						// break;
+					}
+					else
+					{
+						j += out_tmp[j + 1] + 2;
+					}
+				}
+				// if(ids_begin!=tmp_size)printf("error ids_begin %d tmp_size %d\n",ids_begin,tmp_size);
+			}
+			// else
+			// {
+			// 	reached_subkey[comp.sub_key] = -1;
+			// 	find_key.max_dist = 0;
+			// 	for (int j = 0; j < tmp_size; j++)
+			// 	{
+			// 		cand.emplace_back( out_tmp[j]);
+			// 	}
+			// }
+		}
+		else
+		{
+			if (popcount(tmp_info.sub_key ^ subkey) == sub_hammdist)
+			{
+				key_find kf{0, 0, 0};
+				reached_subkey[tmp_info.sub_key] = -1;
+				// if(reached_subkey.find(tmp_info.sub_key)!=reached_subkey.end())printf("error\n");
+				gen_cand_first(kf, cand_first, {tmp_info.sub_key, tmp_info.skiplen, tmp_info.length}, tmp_visit, i, subkey, 0, tmp_info.sub_key, cand);
+				// visited_keys.push_back(tmp_info);
+			}
+		}
+	}
+}
+
 void containers::test()
 {
+	record_info.clear();
+	query_times = 0;candi_num =0;
+	// hittt = 0;
+	// misss = 0;
 	// ------------test insert and query----------
 	// int insert_num=500;
 	// pair<uint64_t, uint64_t>* tempPair = new pair<uint64_t, uint64_t>[insert_num];
@@ -1529,14 +3179,22 @@ void containers::test()
 	printf("Test!\n");
 	uint64_t temp_key[2] = {0};
 
+	uint64_t begin_time, end_time;
+	vector<uint64_t> time_esp;
 	uint32_t i = 0;
-	for (auto &itx : test_pool)
+	for (int t = 0; t < test_pool.size(); t++)
 	{
+		ocall_get_timeNow(&begin_time);
+		auto itx = test_pool[t];
+		auto img_id = test_targets[t];
 		temp_key[0] = itx.first;
 		temp_key[1] = itx.second;
-		find_sim(temp_key, 0, 0); // test_targets[i]
+		find_sim(temp_key, img_id, 0);
 		// 					   // i++;
 		int k = 1000;
+		ocall_get_timeNow(&end_time);
+		time_esp.push_back((end_time - begin_time));
+
 		// auto res = find_knn(temp_key, k);
 		// uint64_t cmp_hamm[2], tmp_fullkey[2];
 		// for (int i = 0; i < res.size(); i++)
@@ -1549,6 +3207,33 @@ void containers::test()
 		// }
 		// break;
 	}
+
+	// 根据rate字段对recoInfo进行排序
+	// std::sort(record_info.begin(), record_info.end(), [](const Record_Info_Refine &a, const Record_Info_Refine &b)
+	// 		  { return a.sub_nums < b.sub_nums; });
+
+	// // 打印前10个Record作为示例
+	// for (auto &record : record_info)
+	// {
+	// 	// const auto &record = record_info[i];
+	// 	printf("%d \n", record.fetch_cand_times);
+	// 	// printf("----size %u-----query %u candidate %u candi2 %u sub-nums %u rate %lf\n",
+	// 	// 	   record.fetch_cand_times,
+	// 	// 	   record.query_times,
+	// 	// 	   record.candidate_size,
+	// 	// 	   record.candidate2_size,
+	// 	// 	   record.sub_nums,
+	// 	//    record.rate);
+	// }
+
+	// sort in ascend
+	sort(time_esp.begin(), time_esp.end());
+	// // printf 95th tail
+	// printf("25th tail: %d\n", time_esp[time_esp.size() * 0.15]);
+	// printf("25th tail: %d\n", time_esp[time_esp.size() * 0.25]);
+	// printf("45th tail: %d\n", time_esp[time_esp.size() * 0.45]);
+	// printf("95th tail: %d\n", time_esp[time_esp.size() * 0.65]);
+	printf("95th tail: %d\n", time_esp[time_esp.size() * 0.95]);
 
 	// 用线性方式查找，观察数据集中特征值分布
 	// find_sim_linear(test_pool, test_targets);
@@ -1567,42 +3252,42 @@ void containers::test()
 	find_time /= 1e6;
 	insert_time /= 1e6;
 	verify_time /= 1e6;
-	printf("resize times %d size %lld finded clrs times %d\n", resize_times, resize_size, find_clrs_num);
+	// printf("resize times %d size %lld finded clrs times %d\n", resize_times, resize_size, find_clrs_num);
 
 	printf("fetch candidate time %d candi_num %d combs %d combs_hit %d bigun%d\n", times_gen, candi_num, combs, combs_hit, big_uneq);
 	// total时间（ms）， find：查询map和linear的时间，insert：插入到set<candidate>的时间，verify：验证candidate的时间
 	printf("total=time:%d,sum:%d, find-time:%d, insert-time:%d, verify-time:%d\n", total_time, find_time + insert_time + verify_time, find_time, insert_time, verify_time);
 	for (int t = 0; t < 6; t++)
 		bd_time[t] /= 1e6;
-	printf("cal-cer one %d, bitmask %d, stash %d, cluster %d id_loading %d \n", bd_time[0], bd_time[1], bd_time[2], bd_time[3], bd_time[4]);
-	printf("zero_num=%d  combine_clr_min=%d test target %d\n", zero_num, combine_clr_min, test_target);
+	// printf("cal-cer one %d, bitmask %d, stash %d, cluster %d id_loading %d \n", bd_time[0], bd_time[1], bd_time[2], bd_time[3], bd_time[4]);
+	// printf("zero_num=%d  combine_clr_min=%d test target %d\n", zero_num, combine_clr_min, test_target);
 
-	printf("max_cache value%d\n", max_val);
+	// printf("max_cache value %d %d\n", mix, mix2);
 }
 void containers::changeHammingDist(uint64_t hammdist, int client_id)
 {
 	this->hammdist[client_id] = hammdist;
 	// for (int i = 0; i < SUBINDEX_NUM; i++)
-	{
-		this->sub_hammdist[client_id] = floor((double)hammdist / SUBINDEX_NUM);
-	}
+	// {
+	// 	this->sub_hammdist[client_id] = floor((double)hammdist / SUBINDEX_NUM);
+	// }
 	// if (hammdist == this->hammdist)
 	// 	return;
 	// this->hammdist = hammdist;
 	// // this->sub_hammdist=hammdist/4;
-	// for (int i = 0; i < cont.sub_index_num; i++)
-	// 	sub_hammdist[i] = 0;
-	// for (int j = hammdist - sub_index_num + 1; j > 0;)
-	// {
-	// 	// the sum of sub_hammdist is hammdist - sub_index_num + 1
-	// 	for (int i = 0; i < sub_index_num; i++)
-	// 	{
-	// 		if (j <= 0)
-	// 			break;
-	// 		sub_hammdist[i]++;
-	// 		j--;
-	// 	}
-	// }
+	for (int i = 0; i < cont.sub_index_num; i++)
+		this->sub_hammdist[client_id][i] = -1;
+	for (int j = hammdist + 1; j > 0;)
+	{
+		// the sum of sub_hammdist is hammdist - sub_index_num + 1
+		for (int i = 0; i < sub_index_num; i++)
+		{
+			if (j <= 0)
+				break;
+			this->sub_hammdist[client_id][i]++;
+			j--;
+		}
+	}
 	// for (int i = 0; i < cont.sub_index_num; i++)
 	// {
 	// 	cont.C_0_TO_subhammdis[i].clear();
@@ -1679,7 +3364,7 @@ void init()
 	{
 		cont.prepare(i, cont.C_0_TO_subhammdis[i]);
 	}
-	printf("c_o size: %d\n", cont.C_0_TO_subhammdis[0].size());
+	// printf("c_o size: %d\n", cont.C_0_TO_subhammdis[0].size());
 	printf("Init!\n");
 	cont.initialize();
 	// cont.get_test_pool();
@@ -1688,13 +3373,28 @@ void init()
 }
 void test_run()
 {
+	opt_refine = 0;
+	cont.successful_num = 0;
+	cont.false_num = 0;
+	cont.hit_succ_num = 0;
+	for (int i = 0; i < 7; i++)
+	{
+		cand_nums[i] = 0;
+		cand_nums_set[i] = 0;
+	}
 	cont.test();
+	// for (int i = 0; i < 7; i++)
+	// {
+	// 	printf("cand %d before %d after %d\n", i, cand_nums_set[i], cand_nums[i]);
+	// }
+	printf("optm= %d.\n", opt_refine);
 	printf("Successfully found similar photos! successful_num=%d.\n", cont.successful_num);
+	// printf("Successfully found similar photos! successful_num=%d hit %d false %d.\n", cont.successful_num, cont.hit_succ_num, cont.false_num);
 }
 void init_after_send()
 {
 	cont.get_test_pool(); // get test pool before sort the linearlist
-	cont.full_key_sorted.shrink_to_fit();
+	// cont.full_key_sorted.shrink_to_fit();
 
 	cont.init_filters(0);
 	cont.opt_full_index();
@@ -1708,15 +3408,15 @@ void init_after_send()
 		nums += cont.sub_linear_comp[i].size();
 	cont.lru_cache.capacity = CACHE_SIZE; // 5000 ((uint32_t)floor((double)nums / 100) < 20000 ? 20000 : (uint32_t)floor((double)nums / 100)); //	nums + 100000; //
 	cont.lru_cache.len = 0;
-	cont.lru_cache.remain_size = cont.lru_cache.capacity * 3000;
 	cont.init_ids_cache();
 
 	printf("The full index entry is: %d \n", cont.full_index.size());
 	printf("The number of queries is: %d \n", cont.test_pool.size());
 
-	printf("The full sort entry is: %d \n", cont.full_key_sorted[0].target);
+	printf("The full sort entry is: %d \n", cont.full_key_sorted.size());
 	printf("comp_subkey %d\n", cont.sub_linear_comp->size());
 	printf("cache size %d\n", cont.data_cache.size());
+	printf("---------------- feature Rate %d\n", dataset_size / feature_size);
 }
 
 void ecall_send_data(void *dataptr, size_t len)
@@ -1726,7 +3426,7 @@ void ecall_send_data(void *dataptr, size_t len)
 	info_uncomp info;
 	for (int i = 0; i < len; i++)
 	{
-		if (cont.full_key_sorted.size() < DATA_LEN)
+		// if (cont.full_key_sorted.size() < DATA_LEN)
 		{
 			info.fullkey[0] = data[i].first;
 			info.fullkey[1] = data[i].second;
@@ -1736,10 +3436,10 @@ void ecall_send_data(void *dataptr, size_t len)
 			// if (cont.test_pool.size() < cont.test_size)
 			// 	cont.test_pool.insert(data[i]);
 		}
-		else
-		{
-			cont.tmp_test_pool.push_back(data[i]);
-		}
+		// else
+		// {
+		// 	cont.tmp_test_pool.push_back(data[i]);
+		// }
 	}
 
 	// // printf("The full index entry is: %d \n",cont.test_pool.size()-1);
@@ -1777,7 +3477,8 @@ void ecall_send_targets(void *dataptr, size_t len)
 	uint32_t *data = reinterpret_cast<uint32_t *>(dataptr);
 	for (int i = 0; i < len; i++)
 	{
-		cont.full_key_sorted[index].target = data[i];
+		// cont.full_key_sorted[index].identify = data[i];
+		cont.full_ids.push_back(data[i]);
 		index++;
 	}
 	// targets_data.insert(targets_data.end(),data,data+len);
@@ -1888,7 +3589,7 @@ void ecall_enc_dataset(void *dataptr, size_t len)
 }
 void containers::opt_full_index()
 {
-	uint32_t tmp_hash[2], hash_size = ((bloom_hash_times >> 2) + (bloom_hash_times & 0x3 != 0) * 4) * INT_SIZE; // ceil(times/4)*4
+	uint32_t tmp_hash[2], hash_size = ceil((float)bloom_hash_times / 4) * 16; // ceil(times/4)*4
 	uint8_t tmp_hash_out[32], bloom_hash[hash_size];
 
 	information temp_information;
@@ -1905,8 +3606,10 @@ void containers::opt_full_index()
 	uint8_t *tmp_compress_data = new uint8_t[80000]; // 临时空间用于进行压缩，数据量大时可能需要增大
 	uint32_t complen = 0;
 
+	int real_total_num = 0;
 	for (int i = 0; i < full_key_sorted.size();)
 	{
+		real_total_num++;
 		fullkey_len++;
 		info_idy.clear();
 
@@ -1956,94 +3659,96 @@ void containers::opt_full_index()
 			filters->insert(bloom_hash, bloom_hash_times * INT_SIZE);
 		}
 
-		uint32_t tmp_sub[4];
-		cont.get_sub_fingerprint32(tmp_sub, temp_keys);
-		for (int j = 0; j < 4; j++)
-		{
-			temp_information.sub_fullkey = tmp_sub[j];
-			full_index.push_back(temp_information);
-		}
+		// uint32_t tmp_sub[4];
+		// cont.get_sub_fingerprint32(tmp_sub, temp_keys);
+		// for (int j = 0; j < 4; j++)
+		// {
+		// 	temp_information.sub_fullkey = tmp_sub[j];
+		// 	full_index.push_back(temp_information);
+		// }
 
-		uint32_t len = 0;
-		temp_keys[0] = full_key_sorted[i].fullkey[0];
-		temp_keys[1] = full_key_sorted[i].fullkey[1];
-		for (int j = i; j < full_key_sorted.size() && full_key_sorted[j].fullkey[0] == temp_keys[0] && full_key_sorted[j].fullkey[1] == temp_keys[1]; j++)
-		{
-			len++;
-		}
-		len_info.len = len;
-		full_index.push_back(len_info);
+		// uint32_t len = 0;
+		// temp_keys[0] = full_key_sorted[i].fullkey[0];
+		// temp_keys[1] = full_key_sorted[i].fullkey[1];
+		// for (int j = i; j < full_key_sorted.size() && full_key_sorted[j].fullkey[0] == temp_keys[0] && full_key_sorted[j].fullkey[1] == temp_keys[1]; j++)
+		// {
+		// 	len++;
+		// }
+		// len_info.len = len;
+		// full_index.push_back(len_info);
 
-		// 加入target字段，用于测试精确度
-		//  information targets;
-		//  uint32_t tmp_target = -1, num = 0;
-		//  uint32_t tmps[1000] = {0};
-		//  for (int j = i; j < full_key_sorted.size() && full_key_sorted[j].fullkey[0] == temp_keys[0] && full_key_sorted[j].fullkey[1] == temp_keys[1]; j++)
-		//  {
-		//  	tmps[full_key_sorted[j].target]++;
-		//  }
-		//  for (int j = i; j < full_key_sorted.size() && full_key_sorted[j].fullkey[0] == temp_keys[0] && full_key_sorted[j].fullkey[1] == temp_keys[1]; j++)
-		//  {
-		//  	if (num < tmps[full_key_sorted[j].target])
-		//  	{
-		//  		num = tmps[full_key_sorted[j].target];
-		//  		tmp_target = full_key_sorted[j].target;
-		//  	}
-		//  }
-		//  if (tmp_target == -1)
-		//  	tmp_target = full_key_sorted[i].target;
-		//  targets.target = tmp_target;
-		//  full_index.push_back(targets);
+		// // 加入target字段，用于测试精确度
+		// //  information targets;
+		// //  uint32_t tmp_target = -1, num = 0;
+		// //  uint32_t tmps[1000] = {0};
+		// //  for (int j = i; j < full_key_sorted.size() && full_key_sorted[j].fullkey[0] == temp_keys[0] && full_key_sorted[j].fullkey[1] == temp_keys[1]; j++)
+		// //  {
+		// //  	tmps[full_key_sorted[j].target]++;
+		// //  }
+		// //  for (int j = i; j < full_key_sorted.size() && full_key_sorted[j].fullkey[0] == temp_keys[0] && full_key_sorted[j].fullkey[1] == temp_keys[1]; j++)
+		// //  {
+		// //  	if (num < tmps[full_key_sorted[j].target])
+		// //  	{
+		// //  		num = tmps[full_key_sorted[j].target];
+		// //  		tmp_target = full_key_sorted[j].target;
+		// //  	}
+		// //  }
+		// //  if (tmp_target == -1)
+		// //  	tmp_target = full_key_sorted[i].target;
+		// //  targets.target = tmp_target;
+		// //  full_index.push_back(targets);
 
-		for (; i < full_key_sorted.size() && full_key_sorted[i].fullkey[0] == temp_keys[0] && full_key_sorted[i].fullkey[1] == temp_keys[1]; i++)
-		{
-			info_idy.push_back(full_key_sorted[i].identify);
+		// for (; i < full_key_sorted.size() && full_key_sorted[i].fullkey[0] == temp_keys[0] && full_key_sorted[i].fullkey[1] == temp_keys[1]; i++)
+		// {
+		// 	info_idy.push_back(full_key_sorted[i].identify);
 
-			full_key_sorted[i].identify = full_index.size() - 5; // 4 for 4*32bit subkey, 1 for len
-																 // idy_info.identify = full_key_sorted[i].identify;
-																 // full_index.push_back(idy_info);
-		}
-		uint32_t compress_len = for_compressed_size_unsorted((uint32_t *)info_idy.data(), info_idy.size());
-		complen += compress_len - info_idy.size() * 4;
-		for_compress_unsorted((uint32_t *)info_idy.data(), tmp_compress_data, info_idy.size());
-		uint32_t tmp = 0;
+		// 	full_key_sorted[i].identify = full_index.size() - 5; // 4 for 4*32bit subkey, 1 for len
+		// 														 // idy_info.identify = full_key_sorted[i].identify;
+		// 														 // full_index.push_back(idy_info);
+		// }
+		// uint32_t compress_len = for_compressed_size_unsorted((uint32_t *)info_idy.data(), info_idy.size());
+		// complen += compress_len - info_idy.size() * 4;
+		// for_compress_unsorted((uint32_t *)info_idy.data(), tmp_compress_data, info_idy.size());
+		// uint32_t tmp = 0;
 
-		// 如果size小于COMPRESS_MIN_FULLKEY，不压缩，直接存储uint32_t;否则需要把压缩后产生的uint8用小端方式转换为uint32
-		if (info_idy.size() <= COMPRESS_MIN_UNSORT)
-		{
-			for (int j = 0; j < info_idy.size(); j++)
-			{
-				idy_info.comp_data = info_idy[j];
-				full_index.push_back(idy_info);
-			}
-		}
-		else
-		{
-			for (int j = 0; j < compress_len; j += 4)
-			{
-				tmp = 0;
-				for (int t = 0; t < 4; t++)
-				{
-					if (j + t < compress_len)
-					{
-						tmp += ((uint32_t)tmp_compress_data[j + t]) << (8 * t);
-					}
-				}
-				idy_info.comp_data = tmp; // tmp_compress_data[j];
-				full_index.push_back(idy_info);
-			}
-		}
+		// // 如果size小于COMPRESS_MIN_FULLKEY，不压缩，直接存储uint32_t;否则需要把压缩后产生的uint8用小端方式转换为uint32
+		// if (info_idy.size() <= COMPRESS_MIN_UNSORT)
+		// {
+		// 	for (int j = 0; j < info_idy.size(); j++)
+		// 	{
+		// 		idy_info.comp_data = info_idy[j];
+		// 		full_index.push_back(idy_info);
+		// 	}
+		// }
+		// else
+		// {
+		// 	for (int j = 0; j < compress_len; j += 4)
+		// 	{
+		// 		tmp = 0;
+		// 		for (int t = 0; t < 4; t++)
+		// 		{
+		// 			if (j + t < compress_len)
+		// 			{
+		// 				tmp += ((uint32_t)tmp_compress_data[j + t]) << (8 * t);
+		// 			}
+		// 		}
+		// 		idy_info.comp_data = tmp; // tmp_compress_data[j];
+		// 		full_index.push_back(idy_info);
+		// 	}
+		// }
+		++i;
 	}
 
-	auto last = std::unique(full_key_sorted.begin(), full_key_sorted.end(), [](info_uncomp &a, info_uncomp &b)
-							{ return a.fullkey[0] == b.fullkey[0] && a.fullkey[1] == b.fullkey[1] && a.identify == b.identify; });
-	full_key_sorted.erase(last, full_key_sorted.end());
+	// auto last = std::unique(full_key_sorted.begin(), full_key_sorted.end(), [](info_uncomp &a, info_uncomp &b)
+	// 						{ return a.fullkey[0] == b.fullkey[0] && a.fullkey[1] == b.fullkey[1] && a.identify == b.identify; });
+	// full_key_sorted.erase(last, full_key_sorted.end());
 	// full_key_sorted.shrink_to_fit();
-	printf("fullkey len %d filter_nums %d\n", full_key_sorted.size(), filter_nums);
+	// printf("fullkey len %d filter_nums %d\n", full_key_sorted.size(), filter_nums);
 	// init_filters(filter_nums);//cautious
 	// printf("fullkey len %d filter_nums %d\n", fullkey_len, filter_nums);
 
-	printf("complen=%d\n", complen); // 减少的字节数
+	// printf("dataset real num %d\n", real_total_num);
+	// printf("complen=%d\n", complen); // 减少的字节数
 	delete[] tmp_compress_data;
 };
 void containers::init_filters(uint32_t filter_nums)
@@ -2059,8 +3764,8 @@ void containers::init_filters(uint32_t filter_nums)
 	parameters.optimal_parameters.table_size = 1000000 * 8;
 	parameters.optimal_parameters.number_of_hashes = 4;
 	bloom_hash_times = parameters.optimal_parameters.number_of_hashes;
-	printf("bloom_hash_times=%d max_table-size %lld\n", bloom_hash_times, parameters.optimal_parameters.table_size);
-	// for (int i = 0; i < 4; i++)
+	// printf("bloom_hash_times=%d max_table-size %lld\n", bloom_hash_times, parameters.optimal_parameters.table_size);
+	//  for (int i = 0; i < 4; i++)
 	filters = new bloom_filter(parameters);
 
 	// uint32_t tmp_hash[2], hash_size = ((bloom_hash_times >> 2) + (bloom_hash_times & 0x3 != 0) * 4) * INT_SIZE; // ceil(times/4)*4
@@ -2078,9 +3783,34 @@ void containers::init_filters(uint32_t filter_nums)
 	// 		filters.insert(bloom_hash, bloom_hash_times * INT_SIZE);
 	// 	}
 	// }
+
+	bloom_parameters parameters2;
+	parameters2.random_seed = 0xA5A5A5A5;
+
+	parameters2.optimal_parameters.table_size = 100000;
+	parameters2.optimal_parameters.number_of_hashes = 4;
+	bloom_hash_times = parameters2.optimal_parameters.number_of_hashes;
+	// printf("bloom_hash_times=%d max_table-size %lld\n", bloom_hash_times, parameters.optimal_parameters.table_size);
+	//  for (int i = 0; i < 4; i++)
+
+	for (int i = 0; i < SUBINDEX_NUM; i++)
+	{
+		sub_filters[i] = new bloom_filter[5]{parameters2, parameters2, parameters2, parameters2, parameters2};
+	}
 };
 void containers::make_clusters()
 {
+	{
+		query_t qt[CLR_THD_NUM];
+		for (int t = 0; t < CLR_THD_NUM; t++)
+		{
+			qt[t].tmp_conts = this;
+			qt[t].thd_idx = t;
+			qt[t].type = 0;
+			pthread_create(&clr_thread[t], NULL, func_forward, (void *)&qt[t]);
+		}
+	}
+
 	int j = 0, num = 0, end_idx = 0;
 	uint32_t temp_key = 0;
 	uint32_t pre_size = 0, group_num;
@@ -2101,7 +3831,7 @@ void containers::make_clusters()
 	// }
 	nums_tmp = full_key_sorted.size();
 	// tmp_linear.resize(nums_tmp);
-	resort_que.resize(nums_tmp);
+	// resort_que.resize(nums_tmp);
 
 	// for (int i = 0; i < SUBINDEX_NUM; i++)
 	// {
@@ -2110,7 +3840,6 @@ void containers::make_clusters()
 
 	printf("cluster 1\n");
 
-	printf("cluster 2\n");
 	resort_node tmp_node, tmp_node1;
 	info_uncomp tmp_info, tmp_info1;
 	int tmp_cluster = 0, dis = 0;
@@ -2119,6 +3848,8 @@ void containers::make_clusters()
 	uint32_t rq_size = 0;
 	vector<uint32_t> max_dist_inClr;
 	uint32_t clr_sum_size = 0, clr_max, clr_min;
+	vector<uint32_t> clr_keys(0);
+	dataset_size += full_key_sorted.size() * SUBINDEX_NUM;
 	for (int i = 0; i < SUBINDEX_NUM; i++)
 	{
 		for (int t = 0; t < full_key_sorted.size(); t++)
@@ -2129,8 +3860,15 @@ void containers::make_clusters()
 		std::sort(full_key_sorted.begin(), full_key_sorted.end(), [](const info_uncomp &a, const info_uncomp &b)
 				  { return a.target < b.target; });
 
+		for (int t = 0; t < full_key_sorted.size(); t++)
+		{
+			if (t == 0 || full_key_sorted[t].target != full_key_sorted[t - 1].target)
+			{
+				feature_size++;
+			}
+		}
 		if (min_clr_size < 300)
-			clr[i] = kmodes(i);
+			clr[i] = kmodes(i, clr_keys);
 		cluster_node cl_d;
 		// j = 0;
 		// temp_vec.clear();
@@ -2172,20 +3910,33 @@ void containers::make_clusters()
 		cl_d.subkey = -1; // without practical meaning
 		clr[i].push_back(cl_d);
 		printf("clr_size %d %d\n", i, clr[i].size());
-		// }
-		// for (int i = 0; i < SUBINDEX_NUM; i++)
-		// {
+		//  }
+		//  for (int i = 0; i < SUBINDEX_NUM; i++)
+		//  {
 
 		clr_sum_size = 0;
 		clr_max = 0;
 		clr_min = UINT32_MAX;
-		printf("hashtimes %d cluster 3 %d %d\n", bloom_hash_times, i, SUBINDEX_NUM);
+		// printf("hashtimes %d cluster 3 %d %d\n", bloom_hash_times, i, SUBINDEX_NUM);
 		rq_size = 0;
 		tmp_clrs.clear();
 
+		vector<uint32_t> tmp_clr_endIdx;
+		tmp_clr_endIdx.resize(clr[i].size());
+		clr[i][0].begin_idx = 0;
+		for (int t = 1; t < clr[i].size(); t++)
+		{
+			clr[i][t].begin_idx = clr[i][t - 1].begin_idx + clr[i][t - 1].group_size;
+			tmp_clr_endIdx[t - 1] = clr[i][t].begin_idx;
+		}
+		tmp_clr_endIdx[tmp_clr_endIdx.size() - 1] = full_key_sorted.size();
+
+		// printf("hashtimes %d cluster 3 %d %d\n", bloom_hash_times, i, SUBINDEX_NUM);
 		clr_nums.clear();
 		// resort_que.clear();
 		clr_nums.resize(clr[i].size());
+		for (int t = 0; t < clr_nums.size() - 1; t++)
+			clr_nums[t] = clr[i][t].group_size;
 		max_dist_inClr.resize(clr[i].size());
 		for (int j = 0; j < full_key_sorted.size(); j++)
 		{
@@ -2197,51 +3948,106 @@ void containers::make_clusters()
 			// tmp_node.sub_info.sub_key = full_key_sorted[j].target;
 			// tmp_node.sub_info.identifiers = full_key_sorted[j].identify;
 
-			for (int t = 0; t < (clr[i].size() - 1); t++)
+			if (clr_keys.size())
 			{
-				dis = popcount(full_key_sorted[j].target ^ clr[i][t].subkey);
-				if (dis < tmp_dist)
-				{
-					tmp_clrs.clear();
-					tmp_clrs.push_back(t);
-					tmp_cluster = t;
-					tmp_dist = dis;
-				}
-				else if (dis == tmp_dist)
-				{
-					// tmp_clrs.push_back(t);
-				}
+				auto res = find_nearest_element_avx2(clr_keys, full_key_sorted[j].target, 0, clr_keys.size());
+
+				tmp_clrs.clear();
+				tmp_clrs.push_back(res.first);
+				tmp_dist = res.second;
+				tmp_cluster = res.first;
+				// printf("%d %d %d\n", tmp_dist, tmp_cluster, clr_keys.size());
 			}
+			// for (int t = 0; t < (clr[i].size() - 1); t++)
+			// {
+			// 	dis = popcount(full_key_sorted[j].target ^ clr[i][t].subkey);
+			// 	if (dis < tmp_dist)
+			// 	{
+			// 		tmp_clrs.clear();
+			// 		tmp_clrs.push_back(t);
+			// 		tmp_cluster = t;
+			// 		tmp_dist = dis;
+			// 	}
+			// 	else if (dis == tmp_dist)
+			// 	{
+			// 		// tmp_clrs.push_back(t);
+			// 	}
+			// }
+
 			if (tmp_cluster >= 0 && tmp_dist <= max_dist) // cautious
 			{
-				if (tmp_dist > max_dist_inClr[tmp_cluster])
-					max_dist_inClr[tmp_cluster] = tmp_dist;
+				// if (tmp_dist > max_dist_inClr[tmp_cluster])
+				//     max_dist_inClr[tmp_cluster] = tmp_dist;
 				for (auto &val : tmp_clrs)
 				{
-					tmp_node.cluster_id = val;
-					// tmp_node.my_id = clr_nums[val];
-					clr_nums[val]++;
-					if (rq_size >= resort_que.size())
-						printf("error rq_size %d %d\n", rq_size, resort_que.size());
-					resort_que[rq_size] = tmp_node;
-					rq_size++;
+					// if (clr[i][val].begin_idx >= tmp_clr_endIdx[val])
+					//     printf("err %d %d\n", clr[i][val].begin_idx, tmp_clr_endIdx[val]);
+					std::swap(full_key_sorted[clr[i][val].begin_idx], full_key_sorted[j]);
+					// tmp_info = full_key_sorted[clr[i][val].begin_idx];
+					// full_key_sorted[clr[i][val].begin_idx] = full_key_sorted[j];
+					// full_key_sorted[j] = tmp_info;
+					// printf("%d %d %d\n", clr[i][val].begin_idx, j, clr_nums[val]);
+					if (clr[i][val].begin_idx == j)
+					{
+						clr[i][val].begin_idx++;
+						int k = 0;
+						for (k = 0; k < clr[i].size() && clr[i][k].begin_idx >= tmp_clr_endIdx[k]; k++)
+							;
+						if (k < clr[i].size())
+							j = clr[i][k].begin_idx;
+						else
+							j = full_key_sorted.size();
+					}
+					else
+					{
+						clr[i][val].begin_idx++;
+					}
+					j--;
+
+					// tmp_node.cluster_id = val;
+					// // tmp_node.my_id = clr_nums[val];
+					clr_nums[val]--;
+					// if (rq_size >= resort_que.size())
+					//     printf("error rq_size %d %d\n", rq_size, resort_que.size());
+					// resort_que[rq_size] = tmp_node;
+					// rq_size++;
 				}
-				// tmp_node.cluster_id = tmp_cluster;
-				// tmp_node.my_id = clr_nums[tmp_cluster];
-				// clr_nums[tmp_cluster]++;
-				// resort_que[j] = tmp_node;
 			}
 			else
 			{
+				int clr_idx = clr[i].size() - 1;
+				// printf("%d %d %d\n", clr[i][clr_idx].begin_idx, j, clr_nums[tmp_cluster]);
+				// if (clr[i][clr_idx].begin_idx >= tmp_clr_endIdx[clr_idx])
+				//     printf("err %d %d\n", clr_idx, tmp_clr_endIdx[clr_idx]);
+				std::swap(full_key_sorted[clr[i][clr_idx].begin_idx], full_key_sorted[j]);
+				// tmp_info = full_key_sorted[clr[i][clr_idx].begin_idx];
+				// full_key_sorted[clr[i][clr_idx].begin_idx] = full_key_sorted[j];
+				// full_key_sorted[j] = tmp_info;
+
+				if (clr[i][clr_idx].begin_idx == j)
+				{
+					// clr[i][clr_idx].begin_idx++;
+					// int k = 0;
+					// for (k = 0; k < clr[i].size() && clr[i][k].begin_idx >= tmp_clr_endIdx[k]; k++)
+					//     ;
+					// if (k < clr[i].size())
+					//     j = clr[i][k].begin_idx;
+					// else
+					j = full_key_sorted.size();
+				}
+				// else
+				clr[i][clr_idx].begin_idx++;
+				j--;
+
 				tmp_cluster = clr[i].size() - 1;
-				tmp_node.cluster_id = clr[i].size() - 1;
-				// tmp_node.my_id = clr_nums[tmp_cluster];
-				clr_nums[tmp_cluster]++;
-				// resort_que[j] = tmp_node;
-				if (rq_size >= resort_que.size())
-					printf("error rq_size %d %d\n", rq_size, resort_que.size());
-				resort_que[rq_size] = tmp_node;
-				rq_size++;
+				// tmp_node.cluster_id = clr[i].size() - 1;
+				// // tmp_node.my_id = clr_nums[tmp_cluster];
+				clr_nums[tmp_cluster]--;
+				// // resort_que[j] = tmp_node;
+				// if (rq_size >= resort_que.size())
+				//     printf("error rq_size %d %d\n", rq_size, resort_que.size());
+				// resort_que[rq_size] = tmp_node;
+				// rq_size++;
 			}
 		}
 
@@ -2251,53 +4057,63 @@ void containers::make_clusters()
 			if (val < max_dist)
 				minxx++;
 		}
-		printf("minxx-------------------- %d %d\n", minxx, clr[i].size() - 1);
+		// printf("minxx-------------------- %d %d\n", minxx, clr[i].size() - 1);
 
 		nums_tmp = 0;
 		for (int t = 0; t < clr[i].size(); t++)
 		{
-			nums_tmp += clr_nums[t];
+			nums_tmp += tmp_clr_endIdx[t] - clr[i][t].begin_idx;
+			// if (tmp_clr_endIdx[t] != clr[i][t].begin_idx)
+			// printf("%d false %d %d \n", nums_tmp, tmp_clr_endIdx[t], clr[i][t].begin_idx);
+			// nums_tmp += clr_nums[t];
 		}
 		// printf("cluster 4 last-size%d total-num%d sub-linear-size %d\n", clr_nums[clr[i].size() - 1], nums_tmp, sub_index_liner[i].size());
+
 		clr[i][0].begin_idx = 0;
+		std::sort(full_key_sorted.begin(), full_key_sorted.begin() + tmp_clr_endIdx[0], [](const info_uncomp &a, const info_uncomp &b)
+				  { return a.target < b.target; });
 		for (int t = 1; t < clr[i].size(); t++)
 		{
-			if (clr_nums[t - 1] == 0)
-				printf("error no node in cluster  %d\n", t);
-			clr[i][t].begin_idx = clr[i][t - 1].begin_idx + clr_nums[t - 1];
+			clr[i][t].begin_idx = tmp_clr_endIdx[t - 1];
+			std::sort(full_key_sorted.begin() + tmp_clr_endIdx[t - 1], full_key_sorted.begin() + tmp_clr_endIdx[t], [](const info_uncomp &a, const info_uncomp &b)
+					  { return a.target < b.target; });
+			// if (clr_nums[t - 1] == 0)
+			//     printf("error no node in cluster  %d\n", t);
+			// clr[i][t].begin_idx = clr[i][t - 1].begin_idx + clr_nums[t - 1];
 		}
 
-		vector<uint32_t> tmp_clr_nums;
-		tmp_clr_nums.resize(clr[i].size());
-		// cluster_id is the index for each node sort by cluster {0,0,0,  2,2,2 1,1,} =>  {0,1,2, 5,6,7  3,4,}
-		for (auto &val : resort_que)
-		{
-			tmp_clr_nums[val.cluster_id]++;
-			val.cluster_id = tmp_clr_nums[val.cluster_id] - 1 + clr[i][val.cluster_id].begin_idx;
-		}
-		uint32_t tmp_index = 0, changed_index;
-		for (int j = 0; j < rq_size; j++)
-		{
-			tmp_node1 = resort_que[j];
-			tmp_info1 = full_key_sorted[j];
-			tmp_index = resort_que[j].cluster_id;
-			if (j == tmp_index)
-				continue;
-			changed_index = j;
-			while (changed_index != tmp_index)
-			{
-				tmp_node = resort_que[tmp_index];
-				tmp_info = full_key_sorted[tmp_index];
+		// vector<uint32_t> tmp_clr_nums;
+		// tmp_clr_nums.resize(clr[i].size());
+		// // cluster_id is the index for each node sort by cluster {0,0,0,  2,2,2 1,1,} =>  {0,1,2, 5,6,7  3,4,}
+		// for (auto &val : resort_que)
+		// {
+		//     tmp_clr_nums[val.cluster_id]++;
+		//     val.cluster_id = tmp_clr_nums[val.cluster_id] - 1 + clr[i][val.cluster_id].begin_idx;
+		// }
+		// uint32_t tmp_index = 0, changed_index;
+		// for (int j = 0; j < rq_size; j++)
+		// {
+		// 	tmp_node1 = resort_que[j];
+		// 	tmp_info1 = full_key_sorted[j];
+		// 	tmp_index = resort_que[j].cluster_id;
+		// 	if (j == tmp_index)
+		// 		continue;
+		// 	changed_index = j;
+		// 	while (changed_index != tmp_index)
+		// 	{
+		// 		tmp_node = resort_que[tmp_index];
+		// 		tmp_info = full_key_sorted[tmp_index];
 
-				full_key_sorted[tmp_index] = tmp_info1;
-				resort_que[tmp_index] = tmp_node1;
-				changed_index = tmp_index;
+		// 		full_key_sorted[tmp_index] = tmp_info1;
+		// 		resort_que[tmp_index] = tmp_node1;
+		// 		changed_index = tmp_index;
 
-				tmp_info1 = tmp_info;
-				tmp_node1 = tmp_node;
-				tmp_index = tmp_node.cluster_id;
-			}
-		}
+		// 		tmp_info1 = tmp_info;
+		// 		tmp_node1 = tmp_node;
+		// 		tmp_index = tmp_node.cluster_id;
+		// 	}
+		// }
+
 		// for (auto it = clr[i].begin(); it < clr[i].end();)
 		// {
 		// 	if (it->begin_idx == (it + 1)->begin_idx)
@@ -2355,8 +4171,8 @@ void containers::make_clusters()
 		if (clr[i].size() > 1)
 			combine_clr_min = ceil((double)(full_key_sorted.size() - clr[i][clr[i].size() - 1].begin_idx) / ((clr[i].size() - 1) * 4));
 
-		printf("cluster 5 %d\n", rq_size);
-		// sort every cluster? (if not sorted)
+		// printf("cluster 5 %d\n", rq_size);
+		//  sort every cluster? (if not sorted)
 
 		// inc_max_dist[i] = (sub_hammdist[i] >= 3 ? 3 : sub_hammdist[i]);
 		uint32_t *begin_s = new uint32_t[clr[i].size()];
@@ -2381,7 +4197,7 @@ void containers::make_clusters()
 			temp_vec.clear();
 			tmp_keys.clear();
 
-			temp_key = full_key_sorted[j].target; // resort_que[j].sub_info.sub_key;
+			temp_key = full_key_sorted[j].target; //                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm[j].sub_info.sub_key;
 			temp_sub_info.sub_key = temp_key;
 			pre_size = 0;
 			tmp_begin_add = 0;
@@ -2390,7 +4206,7 @@ void containers::make_clusters()
 			group_num = 1;
 
 			if (c_idx == clr[i].size() - 1)
-				end_idx = rq_size;
+				end_idx = full_key_sorted.size();
 			else
 				end_idx = clr[i][c_idx + 1].begin_idx;
 
@@ -2556,6 +4372,7 @@ void containers::make_clusters()
 					temp_vec.clear();
 					tmp_begin_add = 0;
 					j--;
+					// printf("%d\n", j);
 				}
 			}
 			if (temp_vec.size() != 0)
@@ -2636,7 +4453,7 @@ void containers::make_clusters()
 		ocall_init_id_point(&id_point[i], id_index[i], i);
 
 		uint32_t comp_idx = 0;
-		printf("clr %d\n", num1++);
+		// printf("clr %d\n", num1++);
 
 		for (auto it = clr[i].begin(); it < clr[i].end() - 1;)
 		{
@@ -2646,8 +4463,15 @@ void containers::make_clusters()
 				it++;
 		}
 
-		printf("cluster 6\n");
+		// printf("cluster 6\n");
 	}
+	clr_thread_dies = 1;
+
+	std::sort(full_key_sorted.begin(), full_key_sorted.end(), [](const info_uncomp &a, const info_uncomp &b)
+			  { return a.identify < b.identify; }); // 恢复成正确的顺序，partition index和full-index一一对应
+
+	for (int i = 0; i < full_ids.size(); i++)
+		full_key_sorted[i].target = full_ids[i];
 #if CACHE_SIZE < 500000
 	for (auto &val : full_index)
 	{
@@ -2659,6 +4483,7 @@ void containers::make_clusters()
 		{
 			add_sum += sub_linear_comp[i][j].length;
 		}
+		printf("sub-index %d size  %d\n", i, sub_linear_comp[i].size());
 	}
 	for (int t = 0; t < SUBINDEX_NUM; t++)
 	{
@@ -2667,10 +4492,79 @@ void containers::make_clusters()
 			add_sum += val.begin_idx;
 		}
 	}
-	printf("add %d\n", add_sum);
 #endif
-	printf("subsize:%d\n", sub_map_size);
-	printf("resort_que size %d\n", resort_que.size());
+
+	int curb = 0;
+	int power[100];
+	int query_mask;
+	uint32_t tmp_hash[2], hash_size = ceil((float)bloom_hash_times / 4) * 16; // ceil(times/4)*4
+	uint8_t tmp_hash_out[32], bloom_hash[hash_size];
+	// {
+	// 	for (int i = 0; i < SUBINDEX_NUM; i++)
+	// 	{
+	// 		for (int t = 0; t < 5; t++)
+	// 		{
+	// 			for (auto &val : clr[i])
+	// 			{
+	// 				// for (int k = 0; k < 4 + t; k++)
+	// 				{
+	// 					if (i < sub_index_plus)
+	// 						curb = sub_keybit;
+	// 					else
+	// 						curb = sub_keybit - 1;
+
+	// 					{
+	// 						for (int t = 0; t < bloom_hash_times; t += 4)
+	// 						{
+	// 							tmp_hash[0] = val.subkey;
+	// 							tmp_hash[1] = i + t * SUBINDEX_NUM * 2;
+	// 							MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + t * INT_SIZE);
+	// 						}
+	// 						sub_filters[i][t].insert(bloom_hash, bloom_hash_times * INT_SIZE);
+	// 					}
+	// 					for (int h = 1; h <= 4 + t; h++)
+	// 					{
+	// 						int s = h;
+	// 						uint32_t bitstr = 0; // the bit-string with s number of 1s
+	// 						for (int i = 0; i < s; i++)
+	// 							power[i] = i;	 // power[i] stores the location of the i'th 1
+	// 						power[s] = curb + 1; // used for stopping criterion (location of (s+1)th 1)
+
+	// 						int bit = s - 1; // bit determines the 1 that should be moving to the left
+
+	// 						while (true)
+	// 						{ // the loop for changing bitstr
+	// 							if (bit != -1)
+	// 							{
+	// 								bitstr ^= (power[bit] == bit) ? (uint32_t)1 << power[bit] : (uint32_t)3 << (power[bit] - 1);
+	// 								power[bit]++;
+	// 								bit--;
+	// 							}
+	// 							else
+	// 							{
+	// 								for (int t = 0; t < bloom_hash_times; t += 4)
+	// 								{
+	// 									tmp_hash[0] = val.subkey ^ bitstr;
+	// 									tmp_hash[1] = i + t * SUBINDEX_NUM * 2;
+	// 									MurmurHash3_x86_128(tmp_hash, 8, hash_seed[0], bloom_hash + t * INT_SIZE);
+	// 								}
+	// 								sub_filters[i][t].insert(bloom_hash, bloom_hash_times * INT_SIZE);
+
+	// 								while (++bit < s && power[bit] == power[bit + 1] - 1)
+	// 								{
+	// 									bitstr ^= (uint32_t)1 << (power[bit] - 1);
+	// 									power[bit] = bit;
+	// 								}
+	// 								if (bit == s)
+	// 									break;
+	// 							}
+	// 						}
+	// 					}
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// }
 };
 
 void ecall_find_one(void *dataptr, uint32_t *res, uint32_t *res_len, uint32_t pre_len, uint64_t hammdist)
@@ -2845,18 +4739,31 @@ void ecall_change_para(uint32_t dataSet, uint32_t hamm, uint32_t clr_size, uint3
 	cont.steps = steps;
 	cont.is_var = is_var;
 	cont.ktimes = ktime;
-	printf("kkkkk kmodes %d steps %d is_var %d ktime %lf\n", cont.kmod, steps, is_var, ktime);
+	// printf("kkkkk kmodes %d steps %d is_var %d ktime %lf\n", cont.kmod, steps, is_var, ktime);
 
 	printf("hamm:%d clr_size:%d clr_dist:%d comb_num:%d  aggre %d\n", cont.hammdist[0], cont.min_clr_size, cont.max_dist, cont.MIN_INC_NUM, cont.aggre_size);
 
-	// for (int i = 0; i < SUBINDEX_NUM; i++)
+	// // for (int i = 0; i < SUBINDEX_NUM; i++)
+	// {
+	// 	cont.sub_hammdist[0] = (uint64_t)floor(1.0 * hamm / SUBINDEX_NUM);
+	// }
+	// // for (int i = 0; i < 4; i++)
+	// {
+	// 	// sub_hammdist[i] = temp[i];
+	// 	printf("sub_hammdist[%d]=%d\n", 0, cont.sub_hammdist[0]);
+	// }
+
+	for (int i = 0; i < cont.sub_index_num; i++)
+		cont.sub_hammdist[0][i] = -1;
+	for (int j = hamm + 1; j > 0;)
 	{
-		cont.sub_hammdist[0] = (uint64_t)floor(1.0 * hamm / SUBINDEX_NUM);
-	}
-	// for (int i = 0; i < 4; i++)
-	{
-		// sub_hammdist[i] = temp[i];
-		printf("sub_hammdist[%d]=%d\n", 0, cont.sub_hammdist[0]);
+		for (int i = 0; i < cont.sub_index_num; i++)
+		{
+			if (j <= 0)
+				break;
+			cont.sub_hammdist[0][i]++; // if hammdist=8,sub_hammdist={2,1,1,1}
+			j--;
+		}
 	}
 }
 void ecall_init_id_index(void *id_index, uint32_t idx)
@@ -2891,7 +4798,107 @@ void containers::dec_page_block(uint8_t *data, uint32_t len, uint8_t *dec_data)
 	EVP_MD_CTX_free(mdCtx);
 	EVP_CIPHER_CTX_free(cipherCtx_);
 }
+void *containers::Keys_clustering(uint32_t thd_idx)
+{
+	int begin, end;
+	while (!clr_thread_dies)
+	{
+		sgx_thread_mutex_lock(&wait_loop.mutex);
+		sgx_thread_cond_wait(&wait_loop.cont, &wait_loop.mutex);
+		sgx_thread_mutex_unlock(&wait_loop.mutex);
 
+		begin = clr_indexes[thd_idx];
+		if (thd_idx < CLR_THD_NUM - 1)
+			end = clr_indexes[thd_idx + 1];
+		else
+			end = full_key_sorted.size();
+		int tmp_dist, tmp_cluster, dis = 0, k = keys.size();
+		for (int j = begin; j < end; j++)
+		{
+			tmp_dist = INT16_MAX;
+			tmp_cluster = -1;
+			// auto res = find_nearest_element_avx2(keys, full_key_sorted[j].target, 0, k);
+			// tmp_cluster = res.first;
+			// tmp_dist = res.second;
+			for (int t = 0; t < k; t++)
+			{
+				dis = popcount(full_key_sorted[j].target ^ keys[t]);
+				if (dis < tmp_dist) // tmp_dist
+				{
+					tmp_cluster = t;
+					tmp_dist = dis;
+				}
+				else if (dis == tmp_dist)
+				{
+					// tmp_clrs.push_back(t);
+				}
+			}
+			{
+				// if (!j || (full_key_sorted[j].target != full_key_sorted[j - 1].target))
+				{
+					if (tmp_cluster >= 0 && tmp_dist == 1 && clusterk[tmp_cluster].size() < 1000)
+					{
+						sgx_thread_mutex_lock(&wait_clusterk[tmp_cluster].mutex);
+						clusterk[tmp_cluster].push_back(full_key_sorted[j].target);
+						sgx_thread_mutex_unlock(&wait_clusterk[tmp_cluster].mutex);
+					}
+					if (tmp_dist <= max_dist)
+					{
+						cluster_sum.fetch_add(tmp_dist);
+					}
+					{
+						if (tmp_dist <= max_dist)
+						{
+							clrs_size[tmp_cluster].fetch_add(1);
+							// clrs_size[tmp_cluster]++;
+
+							cluster_value_nums[0][tmp_cluster + 1].fetch_add(1);
+							// value_nums[0][tmp_cluster + 1]++;
+							for (int t = 0; t < 32; t++)
+							{
+								if ((full_key_sorted[j].target >> t) & 1)
+								{
+									cluster_value_nums[tmp_cluster + 1][t].fetch_add(1);
+								}
+							}
+						}
+					}
+				}
+			}
+
+			if (tmp_dist > max_dist)
+			{
+				stash_nums.fetch_add(1);
+			}
+		}
+
+		sgx_thread_mutex_lock(&wait_res_end.mutex);
+		clr_finish_count++;
+		if (clr_finish_count == CLR_THD_NUM)
+		{
+			sgx_thread_cond_signal(&wait_res_end.cont);
+		}
+		sgx_thread_mutex_unlock(&wait_res_end.mutex);
+	}
+};
+void *containers::func_forward(void *arg)
+{
+	query_t *qt = (query_t *)arg;
+	containers *cont = qt->tmp_conts;
+	uint32_t type = qt->type;
+	uint32_t thd_idx = qt->thd_idx;
+	switch (type)
+	{
+	case 0:
+	{
+		cont->Keys_clustering(thd_idx);
+		break;
+	}
+	default:
+		break;
+	}
+	printf("end %d", type);
+}
 vector<uint32_t> containers::get_rand_keys(int i, int k, vector<uint32_t> &old_keys)
 {
 	vector<uint32_t> keys;
@@ -2963,28 +4970,31 @@ vector<uint32_t> containers::get_rand_keys(int i, int k, vector<uint32_t> &old_k
 	// }
 	return std::move(keys);
 }
-vector<cluster_node> containers::kmodes(int i)
+vector<cluster_node> containers::kmodes(int i, vector<uint32_t> &clr_keys)
 {
-	int k = (uint32_t)(1.0 * cont.full_key_sorted.size() / 2000), tmp_cluster, dis, tmp_dist; //((1.0 * sub_linear_comp[i].size() / 1000 > 1.0 * 1000) ? 1000 : (1.0 * sub_linear_comp[i].size() / 1000))
-	k = (uint32_t)(1.0 * k / (SUBINDEX_NUM - 3));
-	if ((uint32_t)k < 300)
-		k = 300;
-	k = 200; // cautious 200 for img,70 for sift
+	const int LOOP_TIMES = 80;
 
-	k = 50; // 800;//
+	int k = kmod, avgNum;
+	uint32_t rand;
+	vector<uint32_t> keys2;
+	vector<int> tmp_new_keys;
+	cluster_sum.store(0);
+	stash_nums.store(0);
 
-	k = kmod;
-	// k = 400;
-	vector<uint32_t> keys, keys2;
 	vector<pair<uint32_t, uint32_t>> tmp_clrs; // nums keys
-	uint64_t sum = 0, sum0 = INT64_MAX, stash_nums = 0;
+	uint64_t sum0 = INT64_MAX;
 	EcallCMSketch cmsketch(100000);
 	uint8_t out[16];
-	vector<vector<uint32_t>> value_nums;
+	// vector<vector<uint32_t>> value_nums;
 
-	vector<vector<uint32_t>> clusterk; // store k cluster
+	// vector<vector<uint32_t>> clusterk; // store k cluster
 	clusterk.resize(k);
-	// printf("keys size %d \n", keys.size());
+	wait_clusterk.resize(k);
+	for (int t = 0; t < k; t++)
+	{
+		wait_clusterk[t].mutex = SGX_THREAD_MUTEX_INITIALIZER;
+		wait_clusterk[t].cont = SGX_THREAD_COND_INITIALIZER;
+	}
 
 	keys = get_rand_keys(i, k, keys);
 	keys2 = keys;
@@ -3014,109 +5024,138 @@ vector<cluster_node> containers::kmodes(int i)
 	// }
 
 	k = keys.size();
-	value_nums.resize(k + 1);
-	value_nums[0].resize(k + 1);
+
+	cluster_value_nums.resize(k + 1);
+	// vector<std::unique_ptr<std::atomic<uint32_t>>> tmp_mic_clrs;
+	// for (int t = 0; t < k + 1; t++)
+	// tmp_mic_clrs.push_back(std::make_unique<std::atomic<uint32_t>>(0));
+
+	// cluster_value_nums[0] = std::move(tmp_mic_clrs);
+	// tmp_mic_clrs.clear();
+	cluster_value_nums[0].resize(k + 1);
 	for (int t = 1; t < k + 1; t++)
 	{
-		value_nums[t].resize(32);
+		// vector<std::unique_ptr<std::atomic<uint32_t>>> tmp_mic_clrs;
+		// for (int t = 0; t < 32; t++)
+		// 	tmp_mic_clrs.push_back(std::make_unique<std::atomic<uint32_t>>(0));
+		// cluster_value_nums[t] = std::move(tmp_mic_clrs);
+		cluster_value_nums[t].resize(32);
 	}
-	printf("1\n");
-	// for (int t = 0; t < k; t++)
-	// {
-	// 	printf("keys %d \n", keys[t]);
-	// }
-	// printf("keys size %d \n", keys.size());
+	// printf("1\n");
+	//  for (int t = 0; t < k; t++)
+	//  {
+	//  	printf("keys %d \n", keys[t]);
+	//  }
+	//  printf("keys size %d \n", keys.size());
 
 	// only catagory to under max_dist to the cluster, update the cluster without larger than max_dist
 	int times = 0;
-	while (times < 80) // 15
+	while (1) // 15
 	{
+		avgNum = cont.full_key_sorted.size() / k;
 		// printf("times %d\n", times);
 		// printf("2\n");
 		times++;
 		tmp_clrs.clear();
 		tmp_clrs.resize(k);
-		stash_nums = 0;
-		for (int j = 0; j < full_key_sorted.size(); j++)
-		{
-			tmp_dist = INT16_MAX;
-			tmp_cluster = -1;
-			for (int t = 0; t < k; t++)
-			{
-				dis = bitset<32>(full_key_sorted[j].target ^ keys[t]).count();
-				if (dis < tmp_dist) // tmp_dist
-				{
-					tmp_cluster = t;
-					tmp_dist = dis;
-				}
-				else if (dis == tmp_dist)
-				{
-					// tmp_clrs.push_back(t);
-				}
-			}
-			{
-				// sum += tmp_dist;
-				// if (tmp_cluster != -1)
-				{
-					if (tmp_dist <= max_dist)
-					{
-						sum += tmp_dist;
-						MurmurHash3_x86_128(&full_key_sorted[j].target, sizeof(uint32_t), 0, out);
-						cmsketch.Update(out, 16, 1);
-						int num_tmp = cmsketch.Estimate(out, 16);
-						if (num_tmp > tmp_clrs[tmp_cluster].first)
-						{
-							tmp_clrs[tmp_cluster].first = num_tmp;
-							tmp_clrs[tmp_cluster].second = full_key_sorted[j].target;
-						}
-					}
 
-					if (tmp_dist <= max_dist)
-					{
-						value_nums[0][tmp_cluster + 1]++;
-						for (int t = 0; t < 32; t++)
-						{
-							if ((full_key_sorted[j].target >> t) & 1)
-								value_nums[tmp_cluster + 1][t]++;
-						}
-
-						// clusterk[tmp_cluster].push_back(sub_index_liner[i][j].sub_key);
-					}
-				}
-			}
-
-			if (tmp_dist > max_dist)
-			{
-				stash_nums++;
-			}
-		}
-		// loop end
-		// printf("sum %d \n", sum);
-		// if (sum >= sum0) //&& stash_nums < ceil((double)sub_index_liner[i].size() / 2)
+		clrs_size.clear();
+		clrs_size.resize(k);
+		// for (int t = 1; t < k + 1; t++)
 		// {
-		// 	cmsketch.ClearUp();
-		// 	sum = 0;
-		// 	// {printf("sum %d cluster times %d\n",sum0,times);break;}
-		// 	break;
-		// 	continue;
+		// 	clrs_size.push_back(std::make_unique<std::atomic<uint32_t>>(0));
 		// }
-		// else
+		// stash_nums = 0;
+		stash_nums.store(0);
+
+		int gap = full_key_sorted.size() / CLR_THD_NUM;
+		clr_indexes.resize(CLR_THD_NUM);
+		for (int i = 0; i < CLR_THD_NUM; i++)
+		{
+			clr_indexes[i] = i * gap;
+		}
+
+		clr_finish_count = 0;
+
+		sgx_thread_mutex_lock(&wait_loop.mutex);
+		sgx_thread_cond_broadcast(&wait_loop.cont);
+		sgx_thread_mutex_unlock(&wait_loop.mutex);
+
+		sgx_thread_mutex_lock(&wait_res_end.mutex);
+		sgx_thread_cond_wait(&wait_res_end.cont, &wait_res_end.mutex);
+		sgx_thread_mutex_unlock(&wait_res_end.mutex);
+		// for (int j = 0; j < full_key_sorted.size(); j++)
+		// {
+		// 	tmp_dist = INT16_MAX;
+		// 	tmp_cluster = -1;
+		// 	for (int t = 0; t < k; t++)
+		// 	{
+		// 		dis = bitset<32>(full_key_sorted[j].target ^ keys[t]).count();
+		// 		if (dis < tmp_dist) // tmp_dist
+		// 		{
+		// 			tmp_cluster = t;
+		// 			tmp_dist = dis;
+		// 		}
+		// 		else if (dis == tmp_dist)
+		// 		{
+		// 			// tmp_clrs.push_back(t);
+		// 		}
+		// 	}
+		// 	{
+		// 		// sum += tmp_dist;
+		// 		// if (tmp_cluster != -1)
+		// 		{
+		// 			if (tmp_dist <= max_dist)
+		// 			{
+		// 				sum += tmp_dist;
+		// 				// MurmurHash3_x86_128(&full_key_sorted[j].target, sizeof(uint32_t), 0, out);
+		// 				// cmsketch.Update(out, 16, 1);
+		// 				// int num_tmp = cmsketch.Estimate(out, 16);
+		// 				// if (num_tmp > tmp_clrs[tmp_cluster].first)
+		// 				// {
+		// 				// 	tmp_clrs[tmp_cluster].first = num_tmp;
+		// 				// 	tmp_clrs[tmp_cluster].second = full_key_sorted[j].target;
+		// 				// }
+		// 			}
+
+		// 			if (tmp_dist <= max_dist)
+		// 			{
+		// 				clrs_size[tmp_cluster]++;
+		// 				value_nums[0][tmp_cluster + 1]++;
+		// 				for (int t = 0; t < 32; t++)
+		// 				{
+		// 					if ((full_key_sorted[j].target >> t) & 1)
+		// 						value_nums[tmp_cluster + 1][t]++;
+		// 				}
+
+		// 				// clusterk[tmp_cluster].push_back(sub_index_liner[i][j].sub_key);
+		// 			}
+		// 		}
+		// 	}
+
+		// 	if (tmp_dist > max_dist)
+		// 	{
+		// 		stash_nums++;
+		// 	}
+		// }
+
 		{
 			int out = 1;
-			// right k-modes
+			//  k-modes
+			keys2.resize(k);
 			for (int t = 0; t < k; t++)
 			{
-				int size = value_nums[0][t + 1], tmp_key = 0;
+				int size = cluster_value_nums[0][t + 1].load(), tmp_key = 0;
 				for (int j = 0; j < 32; j++)
 				{
-					if (value_nums[t + 1][j] > (size >> 1))
+					if (cluster_value_nums[t + 1][j].load() > (size >> 1))
 					{
 						tmp_key |= (1 << j);
 					}
 				}
 				if (keys[t] != tmp_key)
 					out = 0;
-				keys[t] = tmp_key;
+				keys2[t] = tmp_key;
 			}
 
 			// old k-modes
@@ -3157,12 +5196,46 @@ vector<cluster_node> containers::kmodes(int i)
 			// 	}
 			// }
 
-			if (out && sum == sum0)
+			// balance the cluster's size
+			for (int t = keys2.size() - 1; t >= 0; t--)
 			{
-				printf("sum %d cluster times %d\n", sum0, times);
+				int size = cluster_value_nums[0][t + 1].load();
+				if (size > avgNum * 5)
+				{
+					if (clusterk[t].size() > 1)
+					{
+						sgx_read_rand(reinterpret_cast<unsigned char *>(&rand), sizeof(int));
+						rand = rand % clusterk[t].size();
+						tmp_new_keys.push_back(clusterk[t][rand]);
+
+						sgx_read_rand(reinterpret_cast<unsigned char *>(&rand), sizeof(int));
+						rand = rand % clusterk[t].size();
+						tmp_new_keys.push_back(clusterk[t][rand]);
+					}
+					keys2.erase(keys2.begin() + t);
+					out = 0;
+					continue;
+				}
+				if (size < avgNum / 5)
+				{
+					keys2.erase(keys2.begin() + t);
+					// out = 0;
+					continue;
+				}
+			}
+			for (auto &val : tmp_new_keys)
+			{
+				keys2.push_back(val);
+			}
+			tmp_new_keys.clear();
+
+			if (out && cluster_sum.load() == sum0 || times >= LOOP_TIMES)
+			{
+				// printf("sum %d cluster times %d\n", sum0, times);
 				break;
 			}
-			sum0 = sum;
+			keys = keys2;
+			sum0 = cluster_sum.load();
 
 			// for (int i = 0, sub = 0; i < k; i++)
 			// {
@@ -3172,7 +5245,7 @@ vector<cluster_node> containers::kmodes(int i)
 			// 		sub++;
 			// 	}
 			// }
-			if (is_var && stash_nums >= ceil((double)full_key_sorted.size() * ktimes)) // size / 2
+			if (is_var && stash_nums.load() >= ceil((double)full_key_sorted.size() * ktimes)) // size / 2
 			{
 				auto tmp = get_rand_keys(i, 2 * k, keys);
 				unordered_set<uint32_t> tmp_set(keys.begin(), keys.end());
@@ -3184,23 +5257,37 @@ vector<cluster_node> containers::kmodes(int i)
 			}
 			for (int t = 0; t < k + 1; t++)
 			{
-				value_nums[t].clear();
+				cluster_value_nums[t].clear();
 			}
 			k = keys.size();
 
 			clusterk.resize(k);
+			wait_clusterk.resize(k);
 			for (int t = 0; t < k; t++)
 			{
 				clusterk[t].clear();
+				wait_clusterk[t].mutex = SGX_THREAD_MUTEX_INITIALIZER;
+				wait_clusterk[t].cont = SGX_THREAD_COND_INITIALIZER;
 			}
-			value_nums.resize(k + 1);
-			value_nums[0].resize(k + 1);
+
+			cluster_value_nums.resize(k + 1);
+			// vector<std::unique_ptr<std::atomic<uint32_t>>> tmp_mic_clrs;
+			// for (int t = 0; t < k + 1; t++)
+			// tmp_mic_clrs.push_back(std::make_unique<std::atomic<uint32_t>>(0));
+
+			// cluster_value_nums[0] = std::move(tmp_mic_clrs);
+			// tmp_mic_clrs.clear();
+			cluster_value_nums[0].resize(k + 1);
 			for (int t = 1; t < k + 1; t++)
 			{
-				value_nums[t].resize(32);
+				// vector<std::unique_ptr<std::atomic<uint32_t>>> tmp_mic_clrs;
+				// for (int t = 0; t < 32; t++)
+				// 	tmp_mic_clrs.push_back(std::make_unique<std::atomic<uint32_t>>(0));
+				// cluster_value_nums[t] = std::move(tmp_mic_clrs);
+				cluster_value_nums[t].resize(32);
 			}
 		}
-		sum = 0;
+		cluster_sum.store(0);
 		cmsketch.ClearUp();
 
 		// // cautious
@@ -3217,10 +5304,15 @@ vector<cluster_node> containers::kmodes(int i)
 		// }
 	}
 	vector<cluster_node> tmps;
+	clr_keys.clear();
 	for (int t = 0; t < k; t++)
 	{
+		if (!clrs_size[t].load())
+			continue;
+		clr_keys.push_back(keys[t]);
 		cluster_node cl_info;
 		cl_info.subkey = keys[t];
+		cl_info.group_size = clrs_size[t].load();
 		tmps.push_back(cl_info);
 		// printf("keys %d \n", keys[t]);
 	}
@@ -3281,7 +5373,7 @@ uint8_t *containers::lru_ids_add(uint64_t key, uint32_t sub_i, sub_info_comp com
 	node->key = key;
 	if (comp.length > 0 && ((comp.length & MASK_LEN) * INT_SIZE) > node->ids.size())
 	{
-		max_size = max_size - node->ids.size() + (comp.length & MASK_LEN) * INT_SIZE;
+		// max_size = max_size - node->ids.size() + (comp.length & MASK_LEN) * INT_SIZE;
 
 		resize_size += ((comp.length & MASK_LEN) * INT_SIZE - node->ids.size()) / 4;
 		vector<uint8_t> tmp;
@@ -3290,7 +5382,7 @@ uint8_t *containers::lru_ids_add(uint64_t key, uint32_t sub_i, sub_info_comp com
 	}
 	else if (tmp_size < (node->ids.size() >> 1))
 	{
-		max_size = max_size - node->ids.size() + tmp_size;
+		// max_size = max_size - node->ids.size() + tmp_size;
 		node->ids.resize(tmp_size);
 	}
 
@@ -3320,7 +5412,7 @@ uint8_t *containers::lru_ids_add(uint64_t key, uint32_t sub_i, sub_info_comp com
 
 void containers::init_ids_cache()
 {
-	printf("max id page--- %d\n", max_id_page);
+	// printf("max id page--- %d\n", max_id_page);
 #if CACHE_SIZE >= 500000
 	uint32_t total_cache_item = 0;
 	for (int i = 0; i < SUBINDEX_NUM; i++)
@@ -3329,7 +5421,7 @@ void containers::init_ids_cache()
 	}
 	lru_cache.capacity = total_cache_item;
 #endif
-	printf("cap %d\n", lru_cache.capacity);
+	// printf("cap %d\n", lru_cache.capacity);
 	exist_ids = new ids_node[lru_cache.capacity];
 	uint32_t len = (uint32_t)(1.0 * lru_cache.capacity / SUBINDEX_NUM), index = 0;
 	for (int i = 0; i < SUBINDEX_NUM; i++)
@@ -3357,7 +5449,7 @@ void containers::init_ids_cache()
 			}
 		}
 	}
-	printf("ids_cache len%d cap%d each_size %d\n", lru_cache.len, lru_cache.capacity, sizeof(ids_node));
+	// printf("ids_cache len%d cap%d each_size %d\n", lru_cache.len, lru_cache.capacity, sizeof(ids_node));
 };
 
 void encall_find_knn(void *dataptr, uint32_t *res, uint32_t len, uint32_t len_res, uint64_t hammdist)

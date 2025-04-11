@@ -183,12 +183,12 @@ int SGX_CDECL main(int argc, char *argv[])
         return -1;
     }
 
-    uint32_t threshold = 8, clr_size = 100, clr_dist = 5, dataSet = 0, comb_num = 50, aggre_size = 50, cache = 20000;
+    uint32_t threshold = 8, clr_size = 100, clr_dist = 4, dataSet = 1, comb_num = 50, aggre_size = 50, cache = 20000;
     int option;
     int invalid = 0;
     const char optString[] = "h:s:d:t:l:c:v:b:n:m:";
     int kmodes = 50, steps = 20, is_var = 1;
-    float ktimes = 0.5;
+    float ktimes = 0.4;
 
     while ((option = getopt(argc, argv, optString)) != -1)
     {
@@ -284,14 +284,37 @@ int SGX_CDECL main(int argc, char *argv[])
         break;
     }
 
-    // two read_data's flag: {0,0} for img512, {1,2} for siftM,gistM, {1,1} for sift1B
-    //  read_data("../sift1B_data.bin", res, targets, 1);
-    // read_data("gistM.bin", res, targets, 1);
-    // read_data("img_code512.bin", res, targets, 0);
-
-    // printf("%llu %llu\n", res[0], res[1]);
     // change!!!
     init_from_enclave();
+
+    if (dataSet == 3)
+    {
+        read_data("/root/dataset/sift1B_data.bin", res, targets, 1);
+        send_data(res, targets, 0);
+
+
+        res.clear();
+        targets.clear();
+
+        read_data("/root/dataset/sift1B_query.bin", res, targets, 1);
+        send_data(res, targets, 1);
+        goto init;
+    } 
+    if (dataSet == 4)
+    {
+        read_data("faceData_10M-5.3.bin", res, targets, 1);
+        send_data(res, targets, 0);
+
+        res.clear();
+        targets.clear();
+
+        read_data("query_faceData.bin", res, targets,1);
+        send_data(res, targets, 1);
+        goto init;
+    }
+    // two read_data's flag: {0,0} for img512, {1,2} for siftM,gistM, {1,1} for sift1B
+    // read raw data without encryption
+    // read_data("/root/dataset/sift1B_data.bin", res, targets, 1);
     // send_data(res, targets, 0);
 
     // enc_data_set("gistM.bin"); // 在使用加密的数据集之前-enc,调用该函数对明文数据集进行加密
@@ -301,32 +324,10 @@ int SGX_CDECL main(int argc, char *argv[])
 
     res.clear();
     targets.clear();
-    // switch (dataSet)
-    // {
-    // case 0:
-    // {
-    //     read_data("query_img_code512.bin", res, targets, 0);
-    //     break;
-    // }
-    // case 1:
-    // {
-    //     read_data("gistM.bin", res, targets, 2);
-    //     break;
-    // }
-    // case 2:
-    // {
-    //     read_data("siftM.bin", res, targets, 2);
-    //     break;
-    // }
-    // default:
-    //     break;
-    // }
-    // read_data("../sift1B_query.bin", res, targets, 1);
-    // read_data("gistM.bin", res, targets, 2);
-    // read_data("query_img_code512.bin", res, targets, 0);
 
+    // read_data("/root/dataset/sift1B_query.bin", res, targets, 1);
     // send_data(res, targets, 1);
-
+init:
     init_after_send_data();
 
     clock_t startTime = clock();
@@ -334,21 +335,28 @@ int SGX_CDECL main(int argc, char *argv[])
     clock_t endTime = clock();
 
     double costTime = double(endTime - startTime) / CLOCKS_PER_SEC;
-    printf("The test took %lf seconds.\n", costTime);
-
-    // for (int i = 0; i < 1; i++)
+    // printf("The test took %lf seconds.\n", costTime);
+    // for (int t = 0; t < 4; t++)
     // {
-    //     for (int t = 0; t < 3; t++)
-    //     { // 12+8*t
-    //         ecall_change_para(global_eid, dataSet, 8 + 4 * t, clr_size, clr_dist, comb_num, aggre_size, kmodes, steps, is_var, ktimes);
-    //         startTime = clock();
-    //         test_from_enclave();
-    //         endTime = clock();
-    //         costTime = double(endTime - startTime) / CLOCKS_PER_SEC;
-    //         printf("The test took %lf seconds.\n", costTime);
-    //     }
+    //     ecall_change_para(global_eid, dataSet, 8 + 4 * t, clr_size, clr_dist, comb_num, aggre_size, kmodes, steps, is_var, ktimes);
+    //     startTime = clock();
+    //     test_from_enclave();
+    //     endTime = clock();
+    //     costTime = double(endTime - startTime) / CLOCKS_PER_SEC;
+    //     printf("The test took %lf seconds.\n", costTime);
     // }
-    start_server();//启动server
+    // for (int t = 25; t < 33 ; t++)
+    // {
+    //     ecall_change_para(global_eid, dataSet, 0 + 1 * t, clr_size, clr_dist, comb_num, aggre_size, kmodes, steps, is_var, ktimes);
+    //     startTime = clock();
+    //     test_from_enclave();
+    //     endTime = clock();
+    //     costTime = double(endTime - startTime) / CLOCKS_PER_SEC;
+    //     printf("The test took %lf seconds.\n", costTime);
+    // }
+
+    printf("satrt server successful.\n");
+    start_server();
 
     /* Destroy the enclave */
     sgx_destroy_enclave(global_eid);

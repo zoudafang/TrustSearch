@@ -42,8 +42,9 @@ void read_data(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>>
     std::ifstream input(file_name, std::ios::binary);
     uint64_t high, low;
     uint32_t target, index = 0;
-    uint32_t max_sift = (flag == 0) ? DATA_LEN : 1000000; // gist, sift is 100w 128bit feature
-    while (index < max_sift && input.read(reinterpret_cast<char *>(&high), sizeof(high)) && input.read(reinterpret_cast<char *>(&low), sizeof(low)))
+    uint32_t MAX_DATA_SIZE = (flag == 0) ? DATA_LEN : 100000000, READ_SIZE = (flag == 0) ? DATA_LEN_1B : SIFT_LEN_1B; // gist, sift is 100w 128bit feature
+    data.reserve(READ_SIZE);
+    while (index < MAX_DATA_SIZE && input.read(reinterpret_cast<char *>(&high), sizeof(high)) && input.read(reinterpret_cast<char *>(&low), sizeof(low)))
     {
         std::pair<uint64_t, uint64_t> tmp = {high, low}; // 1281167
         // gist和siftM不存在target数据，不能进行读取
@@ -53,14 +54,16 @@ void read_data(std::string file_name, std::vector<std::pair<uint64_t, uint64_t>>
             data_target.emplace_back(target);
             input.read(reinterpret_cast<char *>(&target), sizeof(target)); // the 512w dataSet's target is 64 bit,target虽然是64bit，但是值从0-1000，所以高位都是0
         }
-        if (index < DATA_LEN)
+        if (index < READ_SIZE)
         {
             data.push_back(tmp); // data[index];
         }
         else
         {
+            // input.close();
+            // return;
             int j = rand() % (index + 1);
-            if (j < DATA_LEN)
+            if (j < READ_SIZE)
             {
                 data[j] = tmp; // data[index];
             }
