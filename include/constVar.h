@@ -27,7 +27,7 @@ static const char CLIENT_CERT[] = "../../key/client/client.crt";
 static const char CLIENT_KEY[] = "../../key/client/client.key";
 static const char CA_CERT[] = "key/ca/ca.crt";              // 注意可执行文件和key文件的相对路径
 static const char CA_CERT_CLIENT[] = "../../key/ca/ca.crt"; // 注意可执行文件和key文件的相对路径
-static const char SERVER_IP[] = "8.141.80.98";              // "60.205.8.107";             //  60.205.8.107
+static const char SERVER_IP[] = "172.22.7.65";              // "60.205.8.107";             //  60.205.8.107
 static const int SERVER_PORT = 9030;
 static const uint32_t THREAD_STACK_SIZE = 8 * 1024 * 1024;
 
